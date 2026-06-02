@@ -1,10 +1,10 @@
 ---
-description: 分析当前目录的开源项目，梳理面向用户的业务功能（一级/二级），产出综合分析报告。当用户希望理解一个项目「提供了哪些用户级别的业务能力」、「能与什么集成」、「优缺点」时使用。本 skill 在主线程编排 project-scout / feature-boundary-reviewer / feature-digger / integration-analyst / report-writer 五个 sub-agent，并在功能边界校准后插入一次人工确认。
+description: 分析当前目录的开源项目，梳理面向用户的业务功能（一级/二级），产出综合分析报告。当用户希望理解一个项目「提供了哪些用户级别的业务能力」、「能与什么集成」、「优缺点」时使用。本 skill 在主线程编排 project-scout / feature-boundary-reviewer / feature-digger / integration-analyst / report-writer / report-quality-challenger 六个 sub-agent，并在功能边界校准后插入多轮人工确认；在阶段 1/4/5 对中间产物做质量质审（每目标 ≤5 轮）。
 ---
 
 # analyze-codebase
 
-你是当前对话的**主编排者**。你的任务是按下述工作流，依次委派 5 个 sub-agent，将一个开源项目的代码与文档转化为面向用户的业务功能分析报告。
+你是当前对话的**主编排者**。你的任务是按下述工作流，依次委派 6 个 sub-agent（`project-scout`、`feature-boundary-reviewer`、`feature-digger`、`integration-analyst`、`report-writer`、`report-quality-challenger`），将一个开源项目的代码与文档转化为面向用户的业务功能分析报告。
 
 ## 适用范围
 
@@ -43,6 +43,12 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 5. 代码有实现但无入口 → 标记「内部能力或未暴露能力」
 6. 文档有功能但代码无实现 → 标记「文档声明但未确认实现」
 
+**v7 扩展红线（R9–R11，委派相关 agent 时一并复述）：**
+
+- **R9（叙事 tier 诚实）**：禁止把无 refs 的推断标为 `confirmed`；`industry_context` 不得进入 `problems_solved` / `scenarios` 主列表（仅 `industry_context_notes`）。
+- **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（名称、顺序、条数）。
+- **R11（质审轮次）**：每个质审 target 的 challenger 调用 **≤ 5 轮**；第 5 轮后若仍有 blocking/major，写 `max_rounds_reached` 并**继续**流水线（不阻塞出报告）。
+
 ## 工作流（严格顺序执行）
 
 **每次委派 agent 时，必须把上文「全局约束」整段拷进 prompt（6 条 prompt 红线 + 统一排除 + 业务功能判定规则 + 冲突处理优先级）。这是硬性要求。**
@@ -61,6 +67,27 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 
 1. 由主线程把 Part 1（项目级概览）**原样写入** `./analysis-report/project-overview.json`（不交给 agent）。
 2. 把 Part 2（候选清单）作为下一阶段（`feature-boundary-reviewer`）的输入。
+
+#### 阶段 1b：project-overview 质审（report-quality-challenger）
+
+主线程在写入 `./analysis-report/project-overview.json` 后执行：
+
+```text
+target ← "project-overview"
+round ← 1
+while round ≤ 5:
+    委派 report-quality-challenger(target, round, prior_issues?)
+    若 status == passed: break
+    若 round == 5 且仍有 blocking/major:
+        写 quality-review/project-overview-final.json (max_rounds_reached)
+        break
+    将 issues 中 blocking/major 整理为修订清单，回灌 project-scout：
+      「仅修订 Part 1 JSON，保持 Part 2 候选清单不变」
+    主线程用 scout 返回的 Part 1 **覆盖写入** project-overview.json
+    round ← round + 1
+```
+
+未通过 max_rounds 也可进入阶段 2，但须在最终 overview §9 引用 unresolved。
 
 ### 阶段 2：功能边界校准（feature-boundary-reviewer）—— 初审
 
@@ -350,6 +377,22 @@ write_json("./analysis-report/feature-plan.json", {
 - 产出：`./analysis-report/features/<功能名>.md` + `./analysis-report/features/<功能名>.json`。
 - 仅向你回传精简摘要（功能名、写入路径、置信度、冲突数、未确认项数）。
 
+**每个 feature 收到 digger 摘要后**，在启动下一个 digger 之前（并行时可在该 feature 完成后立即执行）：
+
+```text
+target ← "features/<功能名>"
+round ← 1
+while round ≤ 5:
+    委派 report-quality-challenger(target, round)
+    若 status == passed: break
+    若 round == 5 且有 blocking/major:
+        写 quality-review/features/<名>-final.json；break
+    回灌 feature-digger：附带 issues + 原 feature-plan 单条记录，只修订 features/<名>.{json,md}
+    round ← round + 1
+```
+
+全部 feature 质审结束后才进入阶段 5。
+
 ### 阶段 5：集成分析（integration-analyst）
 
 委派 `integration-analyst`：
@@ -358,11 +401,25 @@ write_json("./analysis-report/feature-plan.json", {
 - 对每条候选集成能力做三分类：`feature-level`（必填 `owner_feature`）/ `project-level` / `internal-dependency`。
 - 写入 `./analysis-report/integrations.json`（`internal-dependency` 不进入 `integrations[]`，仅在 `excluded_internal[]` 审计）。
 
+#### 阶段 5b：integrations 质审（report-quality-challenger）
+
+```text
+target ← "integrations"
+round ← 1
+while round ≤ 5:
+    委派 report-quality-challenger(target, round)
+    若 status == passed: break
+    若 round == 5 且有 blocking/major:
+        写 quality-review/integrations-final.json；break
+    回灌 integration-analyst：附带 issues，只修订 integrations.json
+    round ← round + 1
+```
+
 ### 阶段 6：汇总（report-writer）
 
 委派 `report-writer`：
 
-- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`。
+- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`；若存在则读取 `quality-review/*-final.json` 以在 overview §9 列出 unresolved。
 - **不得新增、删除、合并、拆分、重命名一级功能**：overview 的一级功能清单**严格来自** `feature-plan.json`，名称、顺序一致。
 - 缺失或质量不足的 feature → 标注「未能从中间产物确认」，禁止补造。
 - 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<功能名>.md`。
@@ -374,3 +431,4 @@ write_json("./analysis-report/feature-plan.json", {
 - 一级功能总数（与 `feature-plan.json` 一致）
 - 写入产物路径（`./analysis-report/`）
 - 冲突 / 未确认项总数
+- 质审未闭合项（来自 `quality-review/*-final.json`，若有）

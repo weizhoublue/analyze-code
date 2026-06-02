@@ -94,6 +94,15 @@ tools: Read, Grep, Glob, Bash, Write
 - [ ] 编造的集成已删除；模糊未确认的集成已移到 `unconfirmed[]`。
 - [ ] 没有写出任何函数级调用链或函数名（红线 6）。
 
+## 质审回灌修订（由 SKILL 阶段 5b 触发）
+
+当主线程在 prompt 中附带 `quality-review/integrations-round-<N>.json` 的 `issues[]` 时：
+
+- **仅修订** `./analysis-report/integrations.json`（可覆盖写）。
+- 逐条处理 `severity ∈ {blocking, major}`：补全 `notes`/`refs`、修正 `owner_feature`、去除空泛描述。
+- **禁止**修改 `feature-plan.json`；**禁止**新增 feature-level 集成若 `owner_feature` 不在 plan 中。
+- 完成后返回摘要并注明 `revision_round: <N>`。
+
 ## 返回给主线程
 
 仅一段简短摘要：
