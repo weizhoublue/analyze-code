@@ -21,6 +21,7 @@ tools: Read, Grep, Glob
    - `Glob`：仅用于在补证 `Grep` 前定位 1~2 个候选文件，整轮总数 ≤ 3 次；
    - 仅在 `exclude` / `merge` / `split` 判定需要二次确认时使用。
 6. 不要输出函数级调用链。工作原理应描述为：用户流程、系统抽象流程、状态变化、外部交互。
+7. **origin 字段中立判定**：每条候选可能带 `origin ∈ {scout-initial, user-added@round-N, user-split-from-<id>@round-N, 以及未来扩展的任意非 scout-initial 取值}`；该字段**仅用于审计回溯**，**禁止**因为 `origin != scout-initial` 而调整你的 `decision`。判定必须仅依据「业务功能判定规则」与该条的 `evidence_samples`。
 
 ## 业务功能判定规则
 
@@ -66,6 +67,20 @@ tools: Read, Grep, Glob
 - `exclude` 必须解释为「为何属于非业务功能」（引用判定规则中的某一条）。
 - `keep` 也必须给一个 ≤ 120 字符的理由（避免无脑通过）。
 
+## 重审（subsequent review）说明
+
+本 agent 同一个文件被 SKILL 阶段 2 与阶段 3 循环复用：
+
+- **初审**：阶段 2 紧跟 `project-scout` 初次扫描调用；输入中所有候选 `origin == scout-initial`。
+- **重审**：阶段 3 人工确认循环里，每轮处理完用户的 add/split/merge/rename/exclude 后再次调用一次；输入清单含 `origin != scout-initial` 的项。
+
+重审时的特别说明：
+
+- **判定规则不变**：仍按「业务功能判定规则」打 `keep` / `exclude` / `merge` / `split` 标签，不因 origin 改变结论（红线 7）。
+- **补证预算优先分配**：补证预算每次调用独立计算（Read ≤ 5、Grep ≤ 5、Glob ≤ 3）。**重审时优先把预算用在 `origin != scout-initial` 的条目**；`scout-initial` 项除非证据样本发生变化，否则建议保持上轮判定稳定。
+- **对已被用户 split / merge / rename 过的项**：允许给出「二次建议」，但 `reason` 必须以「reviewer 二次建议」开头；**不允许自动撤销**用户的 split / merge / rename / exclude；最终态由下一轮用户决定。`decision` 仍只能从 `keep | exclude | merge | split` 中取（红线 7 仍然适用）。
+- **对用户 add 的项**：若评估后认为不属于业务功能，按规则正常 `exclude` 即可；下一轮如何呈现给用户由主线程决定，不要在 `reason` 中讨论展示策略。
+
 ## 返回格式
 
 向主线程返回一段 markdown，包含：
@@ -79,7 +94,8 @@ tools: Read, Grep, Glob
     "2": { "decision": "exclude", "reason": "属于 CI/CD 工程能力，非业务功能", "evidence": ["..."] },
     "3": { "decision": "merge", "merge_target": "配置管理", "merge_with_ids": [4], "reason": "...", "evidence": ["..."] },
     "4": { "decision": "merge", "merge_target": "配置管理", "reason": "...", "evidence": ["..."] },
-    "5": { "decision": "split", "split_into": ["X", "Y"], "reason": "...", "evidence": ["..."] }
+    "5": { "decision": "split", "split_into": ["X", "Y"], "reason": "...", "evidence": ["..."] },
+    "12": { "decision": "split", "split_into": ["A", "B"], "reason": "reviewer 二次建议：用户拆出的 A 仍含两个明显独立的暴露面", "evidence": ["..."] }
   }
 }
 ```
@@ -93,3 +109,5 @@ tools: Read, Grep, Glob
 - [ ] `merge` 双方/多方标注一致指向同一 `merge_target`。
 - [ ] 没有读取候选清单之外的大批文件。
 - [ ] 没有写出任何函数级调用链或函数名（红线 6）。
+- [ ] 没有因为某条 `origin = user-added` 或 `origin = user-split-from-*` 而调整判定（红线 7）。
+- [ ] 若是重审场景：对已被用户 split / merge / rename 过的条目的二次建议，`reason` 已以「reviewer 二次建议」开头。
