@@ -76,9 +76,28 @@ tools: Read, Grep, Glob, Bash
 
 ### 6. 返回格式
 
-向主线程返回一个 markdown 文本，包含两部分：
+向主线程返回一段 markdown，包含两部分：
 
-**Part 1 - 架构概览**（≤ 200 字）：主语言、运行平台、总体职责、核心抽象。
+**Part 1 - 项目级概览**（结构化 JSON；主线程将原样写入 `./analysis-report/project-overview.json`，供 `report-writer` 直接消费 overview.md 的 §1–§5）：
+
+```json
+{
+  "main_language": "<主开发语言；未能确认则写「未能从文档和代码中确认」>",
+  "runtime_platforms": ["<运行平台，如 Linux、Kubernetes、Docker、Browser、Node.js 等>"],
+  "overall_responsibility": "<总体职责一句话，≤ 60 字>",
+  "scenarios": ["<项目级应用场景，每条 ≤ 80 字>"],
+  "problems_solved": ["<项目级解决的问题/痛点，每条 ≤ 80 字>"],
+  "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "architecture_summary": "<≤ 200 字综合架构概览：核心抽象组件 / 数据流 / 主要外部依赖 / 扩展点。禁止函数级描述。>"
+}
+```
+
+字段要求：
+
+- 所有字段都必须从文档与代码中得到证据；缺乏证据时写「未能从文档和代码中确认」，**不得编造**。
+- `pros` / `cons` 每条都要有 `evidence_source` 与 `refs`；如所有条目都无证据，置为 `[]` 并在 `architecture_summary` 末尾追加说明。
+- 仍受 §硬性红线 6 约束：`architecture_summary` 是抽象层面描述，不含函数名 / 方法名 / 调用链。
 
 **Part 2 - 候选一级功能清单**（结构化 JSON，可直接被主线程读取）：
 
@@ -110,3 +129,5 @@ tools: Read, Grep, Glob, Bash
 - [ ] 缺乏证据的字段已显式写「未能从文档和代码中确认」。
 - [ ] 没有写出任何函数级调用链或函数名（红线 6）。
 - [ ] 每条候选的 `summary` ≤ 30 字。
+- [ ] Part 1 项目级概览的 `pros` / `cons` 每条都标了 `evidence_source` 与 `refs`，未能确认的字段已显式标注。
+- [ ] `architecture_summary` 没有函数名 / 方法名 / 调用链（红线 6）。

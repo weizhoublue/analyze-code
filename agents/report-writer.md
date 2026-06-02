@@ -32,21 +32,23 @@ tools: Read, Write
 
 ## 必读输入
 
+- `./analysis-report/project-overview.json`（项目级概览：主开发语言/平台/职责/场景/痛点/优缺点/架构摘要；overview.md §1–§5 的**唯一**数据源）
 - `./analysis-report/feature-plan.json`（一级功能清单的**唯一权威**）
 - `./analysis-report/features/*.json`（每个一级功能的中间产物）
 - `./analysis-report/integrations.json`（集成能力）
 
-**`Read` 工具仅允许作用于上述 3 类文件**：`./analysis-report/feature-plan.json`、`./analysis-report/features/*.json`、`./analysis-report/integrations.json`。禁止 `Read` 任何源码 / 文档 / `boundary-review.json` / 其它中间产物。
+**`Read` 工具仅允许作用于上述 4 类文件**：`./analysis-report/project-overview.json`、`./analysis-report/feature-plan.json`、`./analysis-report/features/*.json`、`./analysis-report/integrations.json`。禁止 `Read` 任何源码 / 文档 / `boundary-review.json` / 其它中间产物。
 
 ## 工作步骤
 
-1. `Read ./analysis-report/feature-plan.json` → 抽取 `features[].name`，按数组顺序作为 overview 中一级功能的**最终顺序**。
-2. 对每个 `name`，尝试 `Read ./analysis-report/features/<name>.json`：
+1. `Read ./analysis-report/project-overview.json` → 抽取 `main_language` / `runtime_platforms` / `overall_responsibility` / `scenarios` / `problems_solved` / `pros` / `cons` / `architecture_summary`，分别填入 overview §1（基本信息）/ §2（应用场景）/ §3（解决的问题与痛点）/ §4（优点）/ §5（缺点与限制）。若 `project-overview.json` 不存在或某字段为「未能从文档和代码中确认」，对应章节也写「未能从中间产物确认」，禁止补造。
+2. `Read ./analysis-report/feature-plan.json` → 抽取 `features[].name`，按数组顺序作为 overview 中一级功能的**最终顺序**。
+3. 对每个 `name`，尝试 `Read ./analysis-report/features/<name>.json`：
    - 摘要取值依次回退：`principle.summary` → `scenarios[0]` → 「未能从中间产物确认」。
    - 若文件存在且摘要可取，用其填 overview 中该功能的一句话摘要。
    - 若文件缺失或满足下方「视为缺失」定义 → 在该功能的摘要行写「**未能从中间产物确认**」。
-3. `Read ./analysis-report/integrations.json` → 写「集成能力」一节，分 `project-level` 与 `feature-level`（feature-level 按所属功能聚合，与一级功能顺序一致）。
-4. **写入** `./analysis-report/overview.md`（结构见下）。
+4. `Read ./analysis-report/integrations.json` → 写「集成能力」一节，分 `project-level` 与 `feature-level`（feature-level 按所属功能聚合，与一级功能顺序一致）。
+5. **写入** `./analysis-report/overview.md`（结构见下）。
 
 ## 产物：`./analysis-report/overview.md`
 
@@ -103,6 +105,7 @@ tools: Read, Write
 - [ ] 集成能力一节没有 `internal-dependency` 条目。
 - [ ] 没有写入未在中间产物中出现的功能或集成对象。
 - [ ] 缺失的字段显式写了「未能从中间产物确认」。
+- [ ] overview §1–§5 的内容均来自 `project-overview.json`；未能确认的字段已显式标注。
 
 ## 返回给主线程
 

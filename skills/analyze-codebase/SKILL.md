@@ -57,7 +57,10 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 - 每个候选一级功能保留 **3~8 条** 关键证据样本（path / kind / snippet / lineno）。
 - 输出**候选一级功能清单**（含编号、名称、简述、暴露面、代码路径、文档路径、证据样本）+ 架构概览。
 
-接收返回后，把候选清单作为下一阶段的输入。
+接收返回后：
+
+1. 由主线程把 Part 1（项目级概览）**原样写入** `./analysis-report/project-overview.json`（不交给 agent）。
+2. 把 Part 2（候选清单）作为下一阶段（`feature-boundary-reviewer`）的输入。
 
 ### 阶段 2：功能边界校准（feature-boundary-reviewer）
 
@@ -150,7 +153,7 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 
 委派 `report-writer`：
 
-- 读取 `feature-plan.json` / `features/*.json` / `integrations.json`。
+- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`。
 - **不得新增、删除、合并、拆分、重命名一级功能**：overview 的一级功能清单**严格来自** `feature-plan.json`，名称、顺序一致。
 - 缺失或质量不足的 feature → 标注「未能从中间产物确认」，禁止补造。
 - 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<功能名>.md`。
