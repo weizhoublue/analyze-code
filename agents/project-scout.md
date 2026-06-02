@@ -120,6 +120,103 @@ tools: Read, Grep, Glob, Bash
 }
 ```
 
+## 窄扫模式（targeted mode）—— 由 SKILL 阶段 3 用户 `add` 时触发
+
+当主线程在 prompt 头部声明 `mode: targeted`，本 agent 进入窄扫模式；此模式**仅对一个用户提名的功能名做定向证据搜索**，不重做全仓索引，不更新 Part 1 项目级概览。
+
+### A. 输入契约
+
+主线程会传入：
+
+- `mode: targeted`
+- `query.name`：用户给的功能名（必填）。
+- `query.hints`：可选，可能附带 CLI 名 / CRD 名 / 配置项关键词。
+- `existing_candidates_summary`：当前候选清单的 `{id, name, code_paths, doc_paths}` 摘要，仅用于**判重**，不要重新读取这些条目的证据。
+
+### B. 三态返回（强制其一）
+
+**B.1 找到证据：**
+
+```json
+{
+  "result": "found",
+  "candidate": {
+    "name": "<最终采用的功能名；如与 query.name 不同，请在 JSON 之外的 markdown 中说明，不要在 candidate 内引入额外字段>",
+    "summary": "<≤ 30 字>",
+    "exposure": ["crd", "doc-scenario"],
+    "code_paths": ["..."],
+    "doc_paths": ["..."],
+    "evidence_samples": [
+      {"path": "...", "kind": "crd", "snippet": "...", "lineno": 0}
+    ],
+    "duplicate_of": null
+  }
+}
+```
+
+> 字段说明：`exposure` 与 `evidence_samples[].kind` 的枚举值见现有「### 5. 候选功能清单产出」节；示例只展示了其中一种取值。`duplicate_of` 在 `result == "found"` 时固定为 `null`，不要填 existing id。
+
+**B.2 与现有项实质重复：**
+
+```json
+{
+  "result": "duplicate",
+  "duplicate_of": 3,
+  "reason": "<说明判定理由，例如 query.name 与 existing.name 同义且 code_paths 高度重合>"
+}
+```
+
+> 字段说明：`duplicate_of: 3` 中的 `3` 是**示例值**；实际返回时填入 `existing_candidates_summary` 中命中的 `existing.id`（整数）。
+
+**B.3 未找到证据：**
+
+```json
+{
+  "result": "not_found",
+  "tried_keywords": ["...", "..."],
+  "searched_paths": ["..."],
+  "reason": "在 CLI 帮助、API 路由、CRD schema、docs/ 中均未发现匹配。"
+}
+```
+
+**红线 4 在此落地：找不到必须 `not_found`，禁止编造 `found`。**
+
+### C. 预算上限（强约束，远小于初次扫描）
+
+| 资源 | 窄扫上限 | 说明 |
+| --- | --- | --- |
+| `Glob` | ≤ 4 次 | 仅用于在 `Grep` 前定位 1~2 个候选路径 |
+| `Grep` | ≤ 8 次 | 必须带 path 范围；**禁止 `Grep -r` 全仓** |
+| `Read` 单次 | ≤ 100 行 | 与初次扫描的 ≤ 200 行对照减半；超长文件用 `Grep` 抽样 |
+| `Read` 总次数 | ≤ 8 次 | 总行数 ≤ 800 |
+| 证据样本 | 3~6 条 | 命中即停 |
+
+**预算耗尽仍未命中 → 必须 `not_found`，禁止"再多查一次"。**
+
+### D. 关键词扩展启发式（不强制）
+
+按以下顺序检索 query.name 与 query.hints 拆出的关键词集：
+
+1. 暴露面入口符号：CLI 子命令、HTTP/RPC 路由、CRD `kind`、配置 key、SDK 函数名。
+2. 用户文档场景：`docs/`、README 中标题或正文出现的对应中英文术语。
+3. 代码 docstring / 注释：仅在前两步未命中时使用。
+
+允许同义词扩展（例："网络策略" → `NetworkPolicy` / `network-policy` / `netpol`），但**每个同义词只算一次 Grep 配额**，不允许穷举所有拼写。
+
+### E. 红线兼容性自查
+
+- 红线 1：即便文件夹与 query.name 同名，无暴露面证据仍 `not_found`；不要把目录名 == 业务功能。
+- 红线 3：禁止编造证据样本；样本 `snippet` 必须是真实存在的代码/文档片段。
+- 红线 6：`summary` 与 `evidence_samples.snippet` 不含函数调用栈描述。
+
+### F. 窄扫模式专属自查（提交前）
+
+- [ ] `result` 字段是 `found` / `duplicate` / `not_found` 之一。
+- [ ] 若 `found`：`evidence_samples` 在 3~6 条之间，每条 path 真实存在。
+- [ ] 若 `not_found`：`tried_keywords` 与 `searched_paths` 非空。
+- [ ] Glob ≤ 4、Grep ≤ 8、Read ≤ 8 次，Read 单次 ≤ 100 行。
+- [ ] 没有读取 `existing_candidates_summary` 之外条目的内部证据。
+
 ## 自查清单（提交前）
 
 - [ ] 候选 `name` 不是代码目录名 / 类名，已改写为业务能力名（红线 1）。
@@ -132,3 +229,4 @@ tools: Read, Grep, Glob, Bash
 - [ ] 每条候选的 `summary` ≤ 30 字。
 - [ ] Part 1 项目级概览的 `pros` / `cons` 每条都标了 `evidence_source` 与 `refs`，未能确认的字段已显式标注。
 - [ ] `architecture_summary` 没有函数名 / 方法名 / 调用链（红线 6）。
+- [ ] 如本次调用是 `mode: targeted` 窄扫，已**额外**完成「窄扫模式专属自查」全部勾选。
