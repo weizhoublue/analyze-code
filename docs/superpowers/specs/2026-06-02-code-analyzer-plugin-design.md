@@ -217,6 +217,7 @@ project-scout
         "decision": "keep | exclude | merge | split",
         "reason": "...",
         "merge_target": null,
+        "merge_with_ids": [],
         "split_into": null,
         "evidence": ["..."]
       }

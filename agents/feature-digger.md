@@ -18,7 +18,7 @@ tools: Read, Grep, Glob, Bash, Write
 3. 禁止在缺乏证据时编造性能结论、优缺点或集成能力。
 4. 无法确认时必须明确写「未能从文档和代码中确认」。
 5. 当文档与代码冲突时，以当前代码实现和用户可见入口为准，并标记冲突。
-6. **不要输出函数级调用链**。
+6. 不要输出函数级调用链。工作原理应描述为：用户流程、系统抽象流程、状态变化、外部交互。
 
 ## 深挖深度限制（**强约束**）
 
@@ -112,7 +112,7 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
     "details": [
       {"mode": "cli-flag", "example": "...", "refs": ["..."]}
     ],
-    "unconfirmed": "<true|false>"
+    "unconfirmed": false
   },
   "scenarios": ["..."],
   "problems_solved": ["..."],
@@ -135,11 +135,13 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 }
 ```
 
-`activation.unconfirmed` 取 `true` 当且仅当 `modes` 中存在无法从文档和代码中确认的启用方式；其他字段中含 "..." 的均为占位符。
+`activation.unconfirmed` 为 JSON 布尔值（`true` / `false`，不要加引号）；取 `true` 当且仅当 `modes` 中存在无法从文档和代码中确认的启用方式。其他字段中含 "..." 的均为字符串占位符。
 
 ## 返回给主线程的摘要（仅）
 
 只返回一段 ≤ 6 行的 markdown：
+
+（`<数量>` 为整数，可为 `0`；空桶请显式写 `0`，不要写「无」。）
 
 ```
 - feature: <功能名>

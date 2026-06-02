@@ -16,7 +16,7 @@ tools: Read, Grep, Glob, Bash
 3. 禁止在缺乏证据时编造性能结论、优缺点或集成能力。
 4. 无法确认时必须明确写「未能从文档和代码中确认」。
 5. 当文档与代码冲突时，以当前代码实现和用户可见入口为准，并标记冲突。
-6. 不要输出函数级调用链。
+6. 不要输出函数级调用链。工作原理应描述为：用户流程、系统抽象流程、状态变化、外部交互。
 
 ## 工作步骤
 
@@ -34,6 +34,7 @@ tools: Read, Grep, Glob, Bash
 - `Glob` 暴露面相关：`**/*.proto`、`**/openapi*.{yaml,json}`、`**/swagger*.{yaml,json}`、`**/*crd*.yaml`、`**/cli/*`、`**/cmd/*`、`**/api/*`、`**/sdk/*`、`**/web/*`、`**/ui/*`、`**/console/*`、`**/dashboard/*`。
 - `Glob` 配置 schema：`**/*config*.{go,py,ts,yaml,json}`、`**/*.schema.{json,yaml}`、`**/values.yaml`。
 - `Grep` 关键入口符号：`flag.String|flag.Bool|cobra.Command|argparse|click.command|@app.command|app.get|app.post|FastAPI|@RestController|GetMapping|PostMapping|router.|express()|defineCommand|defineEventHandler|crd|CustomResourceDefinition|kind: Custom`。
+- **整轮调用预算**：Read 总数 ≤ 30 次（每次 ≤ 200 行）；Grep 总数 ≤ 20 次，且每次需限定到具体路径或文件 glob（禁止 `Grep -r` 全仓搜索 / 不限路径的根级 Grep）；Glob 总数 ≤ 10 次，且首选 `docs/`、`*/README.md`、暴露面相关目录等高价值路径。
 
 **`Bash` 仅用于 `ls` / `stat` / `wc` 等元数据查询；禁止用于读取文件内容（读取一律走 `Read` / `Grep`）。**
 
