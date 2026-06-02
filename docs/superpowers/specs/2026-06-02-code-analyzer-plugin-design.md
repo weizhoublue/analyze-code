@@ -1,9 +1,9 @@
 # 设计文档：code-analyzer Claude Code 插件
 
 - 日期：2026-06-02
-- 状态：修订 v4（在 v3 基础上补充：integration-analyst 三分类输入、report-writer 不得新增/改一级功能）
+- 状态：修订 v5（在 v4 基础上补充：`project-overview.json` 中间产物，用于供 `report-writer` 填充 `overview.md` §1–§5）
 - 来源需求：仓库根目录 `README.md`
-- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界
+- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`（由 project-scout 返回 Part 1，主线程持久化）
 
 ## 1. 目标
 
@@ -63,7 +63,9 @@ project-scout
      - 必须先用 `Glob` / `Grep` 建立索引（文档目录树、CLI/API/CRD/配置入口符号、暴露面文件清单），再**定向**读取与用户暴露面、功能介绍、配置、API、CLI、CRD 相关的**高价值文件**。
      - 每个候选功能最多保留 **3~8 条关键证据样本**（含来源路径与必要片段），写入候选清单供 `feature-boundary-reviewer` 使用。
      - 优先级：暴露面定义 > 用户文档 > 配置 schema > 模块 README > 代码 docstring/注释 > 普通源码片段。
-   - 返回：架构概览 + 一级功能候选清单（每项含：编号、名称、简述、用户暴露面、代码路径、文档路径、3~8 条证据样本）。
+   - 返回两部分（结构化）：
+     - **Part 1 项目级概览**：`main_language` / `runtime_platforms` / `overall_responsibility` / `scenarios` / `problems_solved` / `pros` / `cons` / `architecture_summary`（≤ 200 字、抽象层面，不含函数名/调用链）；主线程**原样写入** `./analysis-report/project-overview.json`，供 `report-writer` 在汇总阶段直接消费 overview §1–§5。Schema 见 §6.3.5。
+     - **Part 2 一级功能候选清单**：每项含编号、名称、简述、用户暴露面、代码路径、文档路径、3~8 条证据样本。
 
 2. **功能边界校准阶段** [新增] → 调用 `feature-boundary-reviewer`（只读、轻量）：
    - 输入：`project-scout` 产出的候选清单与少量证据样本（**不重读全仓**）。
@@ -114,7 +116,8 @@ project-scout
    - 向主线程仅返回精简摘要。
 
 6. **汇总阶段** → 调用 `report-writer`（可写）：
-   - **直接读取 `./analysis-report/feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传。
+   - **直接读取 `./analysis-report/project-overview.json`、`feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传。
+   - `overview.md` §1–§5（基本信息 / 应用场景 / 解决的问题与痛点 / 优点 / 缺点）的内容**严格来自** `project-overview.json`；缺失字段写「未能从中间产物确认」，不得自行补造。
    - **严格禁止新增、删除、合并、拆分、重命名一级功能**：`overview.md` 中的一级功能列表必须**严格来自 `feature-plan.json`**，顺序与命名一致（参见 §7.7）。
    - 若某个 feature 的 `features/<名>.json` 缺失或质量不足，只能标记为「**未能从中间产物确认**」，**不得自行补造**内容。
    - 输出 `./analysis-report/overview.md`（总体报告）。
@@ -125,11 +128,11 @@ project-scout
 
 | Agent | name | 模型 | 工具 | 职责 |
 |---|---|---|---|---|
-| 项目勘察员 | `project-scout` | inherit | Read, Grep, Glob, Bash | 语言/平台/架构识别，索引文档结构，识别用户暴露面，产出一级功能**候选**清单（含 3~8 条证据样本/项）；**禁止全量读取**，先 Glob/Grep 索引后定向读取高价值文件 |
+| 项目勘察员 | `project-scout` | inherit | Read, Grep, Glob, Bash | 语言/平台/架构识别，索引文档结构，识别用户暴露面；返回 **Part 1 项目级概览**（主线程持久化为 `project-overview.json`）+ **Part 2 一级功能候选清单**（含 3~8 条证据样本/项）；**禁止全量读取**，先 Glob/Grep 索引后定向读取高价值文件 |
 | 功能边界校准员 | `feature-boundary-reviewer` | inherit | Read, Grep, Glob | 依据 §7.3 判定规则对候选清单做 keep/exclude/merge/split 标注（轻量、不重读全仓） |
 | 功能深挖员 | `feature-digger` | inherit | Read, Grep, Glob, Bash, Write | 读 `feature-plan.json` 中单条记录，深挖单个一级功能（文档+代码双源、§7.6 五维深度限制），写 md 报告 + JSON 中间产物 |
 | 集成分析员 | `integration-analyst` | inherit | Read, Grep, Glob, Bash, Write | **必须以 `feature-plan.json` + `features/*.json` 为基底**，对每条集成能力做 `feature-level` / `project-level` / `internal-dependency` 三分类，写 `integrations.json` |
-| 报告撰写员 | `report-writer` | inherit | Read, Write | 读取 `feature-plan.json` / `features/*.json` / `integrations.json` 写总体报告；**不得新增/删除/合并/拆分/重命名一级功能**，缺失项标注为「未能从中间产物确认」 |
+| 报告撰写员 | `report-writer` | inherit | Read, Write | 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json` 写总体报告；§1–§5 严格来自 `project-overview.json`；**不得新增/删除/合并/拆分/重命名一级功能**，缺失项标注为「未能从中间产物确认」 |
 
 所有只读 agent 的 `Bash` 仅用于只读式探查（如 `ls`、列目录、统计），不做修改。
 所有 agent 的 frontmatter `description` 中都需要内嵌 §7.2 prompt 红线的摘要，确保模型在被委托时即生效。
@@ -151,6 +154,7 @@ project-scout
 ```text
 ./analysis-report/
 ├── overview.md                # 总体报告
+├── project-overview.json      # [v5] 项目级概览：语言/平台/职责/场景/痛点/优缺点/架构摘要；overview.md §1–§5 唯一数据源
 ├── boundary-review.json       # 审计文件：候选清单 + 校准建议 + 用户最终决策 + 合并拆分历史
 ├── feature-plan.json          # 执行文件：feature-digger 的唯一输入，扁平、不含历史
 ├── integrations.json          # 集成分析中间产物
@@ -315,6 +319,28 @@ project-scout
 - `scope=feature-level` 必须填写 `owner_feature`，且其值必须匹配 `feature-plan.json` 中的某个 `name`。
 - `scope=project-level` 表示跨多个一级功能或与具体功能解耦的全局集成能力。
 - 三分类中的 `internal-dependency` 不进入 `integrations[]`，仅在 `excluded_internal[]` 中可选保留以便审计。
+
+#### 6.3.5 `project-overview.json` [v5 新增]（项目级概览中间产物，overview.md §1–§5 唯一数据源）
+
+```json
+{
+  "main_language": "<主开发语言；未能确认则写「未能从文档和代码中确认」>",
+  "runtime_platforms": ["<运行平台，如 Linux、Kubernetes、Docker、Browser、Node.js 等>"],
+  "overall_responsibility": "<总体职责一句话，≤ 60 字>",
+  "scenarios": ["<项目级应用场景，每条 ≤ 80 字>"],
+  "problems_solved": ["<项目级解决的问题/痛点，每条 ≤ 80 字>"],
+  "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "architecture_summary": "<≤ 200 字综合架构概览：核心抽象组件 / 数据流 / 主要外部依赖 / 扩展点；禁止函数级描述>"
+}
+```
+
+字段说明：
+- 由 `project-scout` 返回作为 Part 1，**主线程在勘察阶段结束后原样写入** `./analysis-report/project-overview.json`（不交给 agent 写，保持 project-scout 只读）。
+- 所有字段必须有证据；缺乏证据时写「未能从文档和代码中确认」，**禁止编造**。
+- `pros` / `cons` 每条须含 `evidence_source` 与 `refs`；若全部无证据可置为 `[]` 并在 `architecture_summary` 末尾说明。
+- `architecture_summary` 受 §7.6 五维约束精神（抽象层面）；不含函数名 / 方法名 / 调用链。
+- `report-writer` 在汇总阶段以本文件为 overview.md §1（基本信息）/ §2（应用场景）/ §3（解决的问题与痛点）/ §4（优点）/ §5（缺点与限制）的**唯一**数据源。
 
 ## 7. 关键约束与原则
 
