@@ -81,6 +81,15 @@ tools: Read, Grep, Glob
 - **对已被用户 split / merge / rename 过的项**：允许给出「二次建议」，但 `reason` 必须以「reviewer 二次建议」开头；**不允许自动撤销**用户的 split / merge / rename / exclude；最终态由下一轮用户决定。`decision` 仍只能从 `keep | exclude | merge | split` 中取（红线 7 仍然适用）。
 - **对用户 add 的项**：若评估后认为不属于业务功能，按规则正常 `exclude` 即可；下一轮如何呈现给用户由主线程决定，不要在 `reason` 中讨论展示策略。
 
+**重审输入契约**（与 SKILL.md §3.4 对齐）：
+
+主线程在重审调用时会附带：
+
+- `candidates`：本轮处理后的完整新清单，每条带 `origin`。
+- `prev_reviews`（可选）：上一轮的 `{<id>: {decision, reason}}`。**仅供你做稳定性比对偏好**，**禁止**当作判定来源（红线 7 仍然适用）。可参考的策略：若某条的 `evidence_samples` 与 `prev_reviews` 出现时一致且 `origin == scout-initial`，鼓励保留原判定；否则按规则独立判定，不要复制粘贴上轮 `reason`。
+
+如果主线程未传 `prev_reviews`（例如初审），就走纯独立判定路径，与本节 Other bullets 一致。
+
 ## 返回格式
 
 向主线程返回一段 markdown，包含：
