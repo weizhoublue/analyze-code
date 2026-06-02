@@ -34,7 +34,7 @@ tools: Read, Grep, Glob, Bash
 - `Glob` 暴露面相关：`**/*.proto`、`**/openapi*.{yaml,json}`、`**/swagger*.{yaml,json}`、`**/*crd*.yaml`、`**/cli/*`、`**/cmd/*`、`**/api/*`、`**/sdk/*`、`**/web/*`、`**/ui/*`、`**/console/*`、`**/dashboard/*`。
 - `Glob` 配置 schema：`**/*config*.{go,py,ts,yaml,json}`、`**/*.schema.{json,yaml}`、`**/values.yaml`。
 - `Grep` 关键入口符号：`flag.String|flag.Bool|cobra.Command|argparse|click.command|@app.command|app.get|app.post|FastAPI|@RestController|GetMapping|PostMapping|router.|express()|defineCommand|defineEventHandler|crd|CustomResourceDefinition|kind: Custom`。
-- **整轮调用预算**：Read 总数 ≤ 30 次（每次 ≤ 200 行）；Grep 总数 ≤ 20 次，且每次需限定到具体路径或文件 glob（禁止 `Grep -r` 全仓搜索 / 不限路径的根级 Grep）；Glob 总数 ≤ 10 次，且首选 `docs/`、`*/README.md`、暴露面相关目录等高价值路径。
+- **整轮调用预算**：Read 总数 ≤ 35 次（每次 ≤ 200 行）；Grep 总数 ≤ 20 次，且每次需限定到具体路径或文件 glob（禁止 `Grep -r` 全仓搜索 / 不限路径的根级 Grep）；Glob 总数 ≤ 10 次，且首选 `docs/`、`*/README.md`、暴露面相关目录等高价值路径。Part 1 的 `module_landscape` / CHANGELOG / ADR 定向读取计入此预算，优先读 `CHANGELOG*`、`docs/architecture*`、`docs/design*`。
 
 **`Bash` 仅用于 `ls` / `stat` / `wc` 等元数据查询；禁止用于读取文件内容（读取一律走 `Read` / `Grep`）。**
 
@@ -86,11 +86,63 @@ tools: Read, Grep, Glob, Bash
   "main_language": "<主开发语言；未能确认则写「未能从文档和代码中确认」>",
   "runtime_platforms": ["<运行平台，如 Linux、Kubernetes、Docker、Browser、Node.js 等>"],
   "overall_responsibility": "<总体职责一句话，≤ 60 字>",
-  "scenarios": ["<项目级应用场景，每条 ≤ 80 字>"],
-  "problems_solved": ["<项目级解决的问题/痛点，每条 ≤ 80 字>"],
-  "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
-  "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
-  "architecture_summary": "<≤ 200 字综合架构概览：核心抽象组件 / 数据流 / 主要外部依赖 / 扩展点。禁止函数级描述。>"
+  "scenarios": [
+    {
+      "title": "≤ 40 字",
+      "narrative": "150~400 字：须含情境、痛点/目标、背景（有则写）、术语解释见 terms",
+      "evidence_tier": "confirmed",
+      "background": "≤ 120 字；无材料则 \"\"",
+      "terms": [{"term": "CRD", "glossary": "≤ 80 字"}],
+      "refs": ["docs/foo.md:12", "pkg/controller/foo.go:88"]
+    }
+  ],
+  "problems_solved": [
+    {
+      "title": "≤ 40 字",
+      "narrative": "150~400 字",
+      "evidence_tier": "doc_declared",
+      "background": "",
+      "terms": [],
+      "refs": ["CHANGELOG.md#v2.0"]
+    }
+  ],
+  "industry_context_notes": [
+    {
+      "title": "≤ 40 字",
+      "narrative": "≤ 150 字；行业通用背景，不得写成项目已实现能力",
+      "evidence_tier": "industry_context",
+      "background": "",
+      "terms": [],
+      "refs": []
+    }
+  ],
+  "pros": [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "cons": [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "architecture_summary": "<≤ 200 字；细节放在 module_landscape>",
+  "module_landscape": {
+    "architecture_layers": [
+      {
+        "name": "API Server",
+        "responsibility": "≤ 100 字",
+        "collaborates_with": ["Controller"],
+        "evidence_tier": "confirmed",
+        "refs": ["..."]
+      }
+    ],
+    "business_features": [
+      {
+        "name": "<与 Part 2 候选 name 对齐>",
+        "responsibility": "≤ 80 字",
+        "depends_on_layers": ["Controller"],
+        "relates_to_features": ["证书管理"],
+        "interaction": "≤ 120 字抽象协作，禁止函数名",
+        "refs": ["..."]
+      }
+    ],
+    "layer_to_feature_mapping": [
+      {"layer": "Controller", "features": ["证书管理"], "notes": "≤ 80 字", "refs": ["..."]}
+    ]
+  }
 }
 ```
 
@@ -99,6 +151,13 @@ tools: Read, Grep, Glob, Bash
 - 所有字段都必须从文档与代码中得到证据；缺乏证据时写「未能从文档和代码中确认」，**不得编造**。
 - `pros` / `cons` 每条都要有 `evidence_source` 与 `refs`；如所有条目都无证据，置为 `[]` 并在 `architecture_summary` 末尾追加说明。
 - 仍受 §硬性红线 6 约束：`architecture_summary` 是抽象层面描述，不含函数名 / 方法名 / 调用链。
+
+### NarrativeBlock 写作要求（Part 1 的 scenarios / problems_solved）
+
+- **条数下限**：`scenarios` ≥ 2；`problems_solved` ≥ 3。
+- **tier 规则**：`confirmed` 须 refs 含 code 或 schema 路径；`doc_declared` 须含 doc 路径；`industry_context` **只能**出现在 `industry_context_notes`（全项目 ≤ 3 条），**禁止**进入 `problems_solved` / `scenarios` 主列表。
+- **禁止**把无项目证据的行业常识标为 `confirmed`。
+- `module_landscape`：`architecture_layers` ≥ 2；`business_features` ≥ 1；`layer_to_feature_mapping` ≥ 1。
 
 **Part 2 - 候选一级功能清单**（结构化 JSON，可直接被主线程读取）：
 
@@ -229,4 +288,7 @@ tools: Read, Grep, Glob, Bash
 - [ ] 每条候选的 `summary` ≤ 30 字。
 - [ ] Part 1 项目级概览的 `pros` / `cons` 每条都标了 `evidence_source` 与 `refs`，未能确认的字段已显式标注。
 - [ ] `architecture_summary` 没有函数名 / 方法名 / 调用链（红线 6）。
+- [ ] Part 1 的 scenarios ≥ 2、problems_solved ≥ 3，且 narrative 为 150~400 字量级。
+- [ ] `module_landscape` 三层齐全；`industry_context_notes` ≤ 3。
+- [ ] 无 `confirmed` 条目 refs 为空。
 - [ ] 如本次调用是 `mode: targeted` 窄扫，已**额外**完成「窄扫模式专属自查」全部勾选。
