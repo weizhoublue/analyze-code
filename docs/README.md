@@ -75,20 +75,21 @@ plugin 最终输出多份报告：
 
 执行流程：
 
-1. `project-scout` 完成索引与候选清单；主线程将项目级概览写入 `./analysis-report/project-overview.json`。
-2. `feature-boundary-reviewer` 给出 keep/exclude/merge/split 建议。
-3. **会暂停等待你输入**：要剔除的候选编号（如 `2 5 7`），或合并/拆分/重命名指令；直接回车表示全部保留。
-4. 主线程把最终决策按轮写入 `./analysis-report/boundary-review/round-<N>.json`，循环退出后写入 `./analysis-report/boundary-review/final.json` 与 `./analysis-report/feature-plan.json`。
-5. 多个 `feature-digger` 并行深挖剩余功能。
-6. `integration-analyst` 完成集成三分类。
-7. `report-writer` 汇总产出 `overview.md`。
+1. `project-scout` 完成索引与候选清单；主线程写入 `project-overview.json`（v7：NarrativeBlock + `module_landscape`）。
+2. `report-quality-challenger` 质审 project-overview（≤5 轮，不通过则回灌 scout 修订 Part 1）。
+3. `feature-boundary-reviewer` 给出 keep/exclude/merge/split 建议。
+4. **多轮人工确认**（软上限 3 轮）：剔除/合并/拆分/重命名/新增；写入 `boundary-review/round-<N>.json`，完成后 `final.json` + `feature-plan.json`。
+5. 每个 `feature-digger` 深挖一级功能 → `report-quality-challenger` 质审该 feature（≤5 轮）。
+6. `integration-analyst` 集成三分类 → 质审 `integrations.json`。
+7. `report-writer` 汇总 `overview.md`（§6 模块关系；§9 可含质审 unresolved）。
 
 产物路径（在**被分析项目**目录下）：
 
 ```text
 ./analysis-report/
 ├── overview.md              # 总体报告
-├── project-overview.json    # 项目级概览（语言/平台/职责/场景/痛点/优缺点/架构摘要）
+├── project-overview.json    # 项目级概览（NarrativeBlock + module_landscape）
+├── quality-review/          # v7：质审 round / final 审计
 ├── boundary-review/          # 审计：按轮拆开 + 最终态
 │   ├── round-1.json          # 每轮一份快照
 │   ├── round-2.json

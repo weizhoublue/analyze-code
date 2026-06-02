@@ -1,7 +1,7 @@
 # 设计文档：报告深度增强 + 质量质审 Agent（v7 增量修订）
 
 - 日期：2026-06-02
-- 状态：初稿（brainstorming 产物，待用户审阅后进入 writing-plans）
+- 状态：已实现（见 plan [`2026-06-02-report-depth-and-quality-agent-v7.md`](../plans/2026-06-02-report-depth-and-quality-agent-v7.md)）
 - 上游文档：[`2026-06-02-code-analyzer-plugin-design.md`](./2026-06-02-code-analyzer-plugin-design.md) v6
 - 修订范围：加深项目级/功能级「应用场景」「痛点」叙事；`overview.md` 新增「功能模块与协作关系」；新增 `report-quality-challenger` 与多检查点质审循环（每目标最多 5 轮）
 

@@ -1,9 +1,9 @@
 # 设计文档：code-analyzer Claude Code 插件
 
 - 日期：2026-06-02
-- 状态：修订 v6（在 v5 基础上补充：人工确认阶段改造为多轮迭代循环，`project-scout` 新增 `targeted` 窄扫模式，`feature-boundary-reviewer` 每轮全量重审，审计文件按轮拆开 `boundary-review/round-N.json` + `final.json`）
+- 状态：修订 v7（在 v6 基础上补充：NarrativeBlock 叙事深度、`module_landscape` 双层模块、`report-quality-challenger` 三检查点质审 ≤5 轮/target；详见 [`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md)）
 - 来源需求：仓库根目录 `README.md`
-- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`（由 project-scout 返回 Part 1，主线程持久化）；v6 人工确认改造为多轮迭代（详见同目录 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md)）
+- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`；v6 人工确认多轮迭代（[`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md)）；v7 报告深度与质审 agent（[`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md)）
 
 ## 1. 目标
 
@@ -32,8 +32,9 @@ analyze-code/                         # 插件根
 │   ├── project-scout.md              # 项目勘察员 (只读)
 │   ├── feature-boundary-reviewer.md  # 功能边界校准员 (只读，轻量) [新增]
 │   ├── feature-digger.md             # 功能深挖员 (只读 + 写报告+中间产物，可并行复用)
-│   ├── integration-analyst.md        # 集成分析员 (只读)
-│   └── report-writer.md              # 报告撰写员 (可写)
+│   ├── integration-analyst.md        # 集成分析员 (只读 + 写 integrations.json)
+│   ├── report-writer.md              # 报告撰写员 (可写 overview.md)
+│   └── report-quality-challenger.md  # 报告质量质审员 (v7) [新增]
 └── README.md
 ```
 
@@ -45,11 +46,14 @@ Skill 作为「指挥」，把重活分派给 subagent，主线程只保留各 s
 
 ```text
 project-scout
-   → feature-boundary-reviewer        [新增：功能边界校准]
-       → 人工确认（Skill 主线程多轮循环，软上限 3 轮） [v6：用户裁剪/合并/拆分/重命名/新增 → 生成 feature-plan.json]
-           → feature-digger × N（并行，按 feature-plan.json）
-               → integration-analyst
-                   → report-writer
+   → report-quality-challenger (project-overview)   [v7]
+       → feature-boundary-reviewer
+           → 人工确认（多轮，软上限 3 轮） [v6]
+               → feature-digger × N
+                   → report-quality-challenger (per feature)   [v7]
+                       → integration-analyst
+                           → report-quality-challenger (integrations)   [v7]
+                               → report-writer
 ```
 
 1. **勘察阶段** → 调用 `project-scout`（只读）：
@@ -64,7 +68,7 @@ project-scout
      - 每个候选功能最多保留 **3~8 条关键证据样本**（含来源路径与必要片段），写入候选清单供 `feature-boundary-reviewer` 使用。
      - 优先级：暴露面定义 > 用户文档 > 配置 schema > 模块 README > 代码 docstring/注释 > 普通源码片段。
    - 返回两部分（结构化）：
-     - **Part 1 项目级概览**：`main_language` / `runtime_platforms` / `overall_responsibility` / `scenarios` / `problems_solved` / `pros` / `cons` / `architecture_summary`（≤ 200 字、抽象层面，不含函数名/调用链）；主线程**原样写入** `./analysis-report/project-overview.json`，供 `report-writer` 在汇总阶段直接消费 overview §1–§5。Schema 见 §6.3.5。
+     - **Part 1 项目级概览**：`main_language` / `runtime_platforms` / `overall_responsibility` / `scenarios` / `problems_solved`（**NarrativeBlock[]**，每条 150~400 字）/ `industry_context_notes` / `pros` / `cons` / `architecture_summary` / **`module_landscape`**（双层模块）；主线程**原样写入** `./analysis-report/project-overview.json`；阶段 1b 经 `report-quality-challenger` 质审。Schema 见 §6.3.5。
      - **Part 2 一级功能候选清单**：每项含编号、名称、简述、用户暴露面、代码路径、文档路径、3~8 条证据样本。
    - [v6] `project-scout` 同一个 agent 文件还支持 `mode: targeted` 窄扫模式，由阶段 3 用户 `add` 时触发；窄扫只对一个用户提名的功能名做定向证据搜索，预算上限约为初次扫描的 1/3 ~ 1/2 量级（Glob/Grep ~40%、Read 总次数 ~27%、Read 总行数 ~13%，具体见 `agents/project-scout.md` §C 与 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md) §7.3 预算表）；三态返回 `found` / `duplicate` / `not_found`。详见 `agents/project-scout.md` 的「窄扫模式」节。
 
@@ -103,7 +107,8 @@ project-scout
        4. 系统如何与外部系统交互
        5. 最终用户得到什么结果
      - 一旦发现自己在沿源码深入函数级实现，必须停止并回到上述 5 维抽象。
-   - 产出：启用方式、应用场景、解决的问题/痛点、优点、缺点、抽象工作原理（按上述 5 维）、性能表现、二级功能清单及说明。
+   - 产出：启用方式、**NarrativeBlock 级**应用场景/痛点、优点、缺点、五维原理、性能、**加厚**二级功能（`sub_features[].narrative` 150~300 字）。
+   - 每个 feature 完成后经 `report-quality-challenger` 质审（≤5 轮/target），issues 回灌 digger 修订。
    - **写两份产物**：
      - 正式报告：`./analysis-report/features/<功能名>.md`（人类阅读）
      - 结构化中间产物：`./analysis-report/features/<功能名>.json`（机器消费，供 report-writer 直接读取）
@@ -117,11 +122,12 @@ project-scout
      - `internal-dependency`：仅为内部实现依赖，**不应作为用户集成能力**输出。
    - 受 §7.2 红线约束：缺乏证据不得编造集成能力。
    - 写入 `./analysis-report/integrations.json`（仅包含 `feature-level` 与 `project-level`；`internal-dependency` 不出现在最终用户视角的集成列表，但可在文件内单独区块或不收录，由 §6.3.4 schema 决定）。
+   - 写入后经 `report-quality-challenger` 质审 integrations（≤5 轮），issues 回灌 `integration-analyst`。
    - 向主线程仅返回精简摘要。
 
 6. **汇总阶段** → 调用 `report-writer`（可写）：
-   - **直接读取 `./analysis-report/project-overview.json`、`feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传。
-   - `overview.md` §1–§5（基本信息 / 应用场景 / 解决的问题与痛点 / 优点 / 缺点）的内容**严格来自** `project-overview.json`；缺失字段写「未能从中间产物确认」，不得自行补造。
+   - **直接读取 `./analysis-report/project-overview.json`、`feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传；可读 `quality-review/*-final.json` 列出 unresolved。
+   - `overview.md` §1–§5 与 **§6 功能模块与协作关系** 严格来自 `project-overview.json`（含 `module_landscape`）；§7 一级功能；§8 集成；§9 综合说明（含质审 unresolved）。
    - **严格禁止新增、删除、合并、拆分、重命名一级功能**：`overview.md` 中的一级功能列表必须**严格来自 `feature-plan.json`**，顺序与命名一致（参见 §7.7）。
    - 若某个 feature 的 `features/<名>.json` 缺失或质量不足，只能标记为「**未能从中间产物确认**」，**不得自行补造**内容。
    - 输出 `./analysis-report/overview.md`（总体报告）。
@@ -136,7 +142,8 @@ project-scout
 | 功能边界校准员 | `feature-boundary-reviewer` | inherit | Read, Grep, Glob | 依据 §7.3 判定规则对候选清单做 keep/exclude/merge/split 标注（轻量、不重读全仓） |
 | 功能深挖员 | `feature-digger` | inherit | Read, Grep, Glob, Bash, Write | 读 `feature-plan.json` 中单条记录，深挖单个一级功能（文档+代码双源、§7.6 五维深度限制），写 md 报告 + JSON 中间产物 |
 | 集成分析员 | `integration-analyst` | inherit | Read, Grep, Glob, Bash, Write | **必须以 `feature-plan.json` + `features/*.json` 为基底**，对每条集成能力做 `feature-level` / `project-level` / `internal-dependency` 三分类，写 `integrations.json` |
-| 报告撰写员 | `report-writer` | inherit | Read, Write | 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json` 写总体报告；§1–§5 严格来自 `project-overview.json`；**不得新增/删除/合并/拆分/重命名一级功能**，缺失项标注为「未能从中间产物确认」 |
+| 报告撰写员 | `report-writer` | inherit | Read, Write | 读取中间产物写 `overview.md`；渲染 NarrativeBlock；§6 来自 `module_landscape`；**不得改 feature-plan 清单** |
+| 报告质量质审员 | `report-quality-challenger` | inherit | Read, Write | 质审 `project-overview` / `features/*` / `integrations`；只写 `quality-review/`；≤5 轮/target；不改 `feature-plan.json` |
 
 所有只读 agent 的 `Bash` 仅用于只读式探查（如 `ls`、列目录、统计），不做修改。
 所有 agent 的 frontmatter `description` 中都需要内嵌 §7.2 prompt 红线的摘要，确保模型在被委托时即生效。
@@ -158,7 +165,8 @@ project-scout
 ```text
 ./analysis-report/
 ├── overview.md                # 总体报告
-├── project-overview.json      # [v5] 项目级概览：语言/平台/职责/场景/痛点/优缺点/架构摘要；overview.md §1–§5 唯一数据源
+├── project-overview.json      # 项目级概览（v7：NarrativeBlock + module_landscape）；overview §1–§6 数据源
+├── quality-review/            # v7：质审 round/final 审计
 ├── boundary-review/                       # v6：按轮拆分
 │   ├── round-1.json                       # 每轮一份审计快照
 │   ├── round-2.json
@@ -176,11 +184,11 @@ project-scout
 ### 6.1 总体报告 `overview.md` 字段
 
 - 项目主要基于什么语言开发、运行平台、总体职责
-- 项目的应用场景
-- 项目解决了什么问题或痛点
-- 项目的优点
-- 项目的缺点和限制
-- 项目有哪些一级功能（含指向各功能详解报告的链接）
+- 项目的应用场景（NarrativeBlock 段落级）
+- 项目解决了什么问题或痛点（含可选行业背景补充）
+- 项目的优点 / 缺点和限制
+- **功能模块与协作关系**（架构组件层 + 一级业务功能层 + 映射）[v7 §6]
+- 项目有哪些一级功能（含指向各功能详解报告的链接）[v7 §7]
 - 实际部署环境中可与哪些其他项目集成
 - 综合视角说明：体现「文档描述」与「代码实现」的对照；列出存在冲突/未确认的事项
 
@@ -194,13 +202,13 @@ project-scout
   - 用户通过 UI 操作启用
   - 默认自动启用
   - 若无法确认须明确写「未能从文档和代码中确认」
-- 功能的应用场景
-- 解决了什么问题或痛点
+- 功能的应用场景（NarrativeBlock，≥2 条）
+- 解决了什么问题或痛点（NarrativeBlock，≥2 条；可选 industry_context_notes ≤2）
 - 优点
 - 缺点
 - 抽象工作原理（**非函数级调用链**；严格按 §7.6 的 5 个维度描述：启用方式 / 主要处理阶段 / 状态变化 / 外部交互 / 最终结果）
 - 性能表现（如无证据须明确标注「未能从文档和代码中确认」）
-- 该一级功能包含哪些二级功能，各二级功能的说明
+- 该一级功能包含哪些二级功能（`sub_features[].narrative` 150~300 字 + `boundary_with_parent`）
 - 依据来源标注（文档 / 代码 / 二者一致 / 存在差异）
 - 冲突与未确认事项列表（如有）
 
@@ -346,27 +354,14 @@ project-scout
 - `scope=project-level` 表示跨多个一级功能或与具体功能解耦的全局集成能力。
 - 三分类中的 `internal-dependency` 不进入 `integrations[]`，仅在 `excluded_internal[]` 中可选保留以便审计。
 
-#### 6.3.5 `project-overview.json` [v5 新增]（项目级概览中间产物，overview.md §1–§5 唯一数据源）
+#### 6.3.5 `project-overview.json`（项目级概览；overview.md §1–§6 数据源）
 
-```json
-{
-  "main_language": "<主开发语言；未能确认则写「未能从文档和代码中确认」>",
-  "runtime_platforms": ["<运行平台，如 Linux、Kubernetes、Docker、Browser、Node.js 等>"],
-  "overall_responsibility": "<总体职责一句话，≤ 60 字>",
-  "scenarios": ["<项目级应用场景，每条 ≤ 80 字>"],
-  "problems_solved": ["<项目级解决的问题/痛点，每条 ≤ 80 字>"],
-  "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
-  "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
-  "architecture_summary": "<≤ 200 字综合架构概览：核心抽象组件 / 数据流 / 主要外部依赖 / 扩展点；禁止函数级描述>"
-}
-```
+v7 使用 **NarrativeBlock**（见 [`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md) §3）作为 `scenarios[]` / `problems_solved[]` 元素；另含 `industry_context_notes[]`（≤3）、`module_landscape`（双层模块，§4）。完整 JSON 示例见 `agents/project-scout.md` Part 1。
 
 字段说明：
-- 由 `project-scout` 返回作为 Part 1，**主线程在勘察阶段结束后原样写入** `./analysis-report/project-overview.json`（不交给 agent 写，保持 project-scout 只读）。
-- 所有字段必须有证据；缺乏证据时写「未能从文档和代码中确认」，**禁止编造**。
-- `pros` / `cons` 每条须含 `evidence_source` 与 `refs`；若全部无证据可置为 `[]` 并在 `architecture_summary` 末尾说明。
-- `architecture_summary` 受 §7.6 五维约束精神（抽象层面）；不含函数名 / 方法名 / 调用链。
-- `report-writer` 在汇总阶段以本文件为 overview.md §1（基本信息）/ §2（应用场景）/ §3（解决的问题与痛点）/ §4（优点）/ §5（缺点与限制）的**唯一**数据源。
+- 由 `project-scout` 返回 Part 1；主线程写入后由 `report-quality-challenger` 质审（≤5 轮）。
+- `scenarios` ≥ 2；`problems_solved` ≥ 3；`industry_context` tier 不得进入主列表。
+- `report-writer`：§1–§5 + §6 `module_landscape` 均来自本文件。
 
 ## 7. 关键约束与原则
 
@@ -389,6 +384,12 @@ project-scout
 
 - **R7（reviewer 中立判定）**：`feature-boundary-reviewer` 在打 `decision` 时禁止因为 `origin = user-added` 或 `origin = user-split-from-*` 或任意非 `scout-initial` 取值而调整结论；origin 仅用于审计回溯。`prev_reviews` 也仅供 reviewer 做稳定性比对偏好，**不作为判定来源**。
 - **R8（scout 窄扫强制三态）**：`project-scout (mode: targeted)` 必须返回 `found` / `duplicate` / `not_found` 三态之一；预算耗尽未命中**必须** `not_found`，禁止再多查一次。
+
+[v7 扩展约束]
+
+- **R9（叙事 tier 诚实）**：禁止无 refs 标 `confirmed`；`industry_context` 仅 `industry_context_notes`。
+- **R10（质审不改清单）**：`report-quality-challenger` 不得改 `feature-plan.json`。
+- **R11（质审轮次）**：每 target ≤5 轮；超限写 `max_rounds_reached` 后继续流水线。
 
 ### 7.3 业务功能判定规则 [新增]
 

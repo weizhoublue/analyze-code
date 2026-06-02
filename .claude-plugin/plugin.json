@@ -2,7 +2,7 @@
   "name": "code-analyzer",
   "displayName": "Code Analyzer",
   "version": "0.1.0",
-  "description": "分析开源项目代码，梳理面向用户的业务功能并产出综合分析报告（一个 Skill + 五个 sub-agent 协作）",
+  "description": "分析开源项目代码，梳理面向用户的业务功能并产出综合分析报告（一个 Skill + 六个 sub-agent 协作，含 report-quality-challenger 质审）",
   "keywords": ["code-analysis", "feature-discovery", "documentation"],
   "author": {
     "name": "weizhoublue"
