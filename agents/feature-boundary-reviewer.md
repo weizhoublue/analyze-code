@@ -46,7 +46,7 @@ tools: Read, Grep, Glob
 
 ## 标注规范
 
-**字段约定**：与本次 `decision` 无关的字段一律省略，不要写 `null`；这能让主线程直接合并到 `boundary-review.json` 而无需做空值清理。
+**字段约定**：与本次 `decision` 无关的字段一律省略，不要写 `null`；这能让主线程直接合并到 `boundary-review/round-<N>.json` 而无需做空值清理。
 
 对每条候选给出 `review` 对象：
 
@@ -94,7 +94,7 @@ tools: Read, Grep, Glob
 
 向主线程返回一段 markdown，包含：
 
-**Part 1 - 校准结果**（结构化 JSON，主线程将与原候选 merge 写入 `boundary-review.json`）：
+**Part 1 - 校准结果**（结构化 JSON，主线程将与原候选 merge 写入 `boundary-review/round-<N>.json`）：
 
 ```json
 {

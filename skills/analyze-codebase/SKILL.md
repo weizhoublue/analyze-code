@@ -115,7 +115,7 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 
 **`merge` / `rename` / `exclude` 不改变 `origin`**：
 
-- `merge`：合并的目标候选保留它原本的 `origin`（多个合并方的 `evidence_samples` 在主线程内做去重合并；其它合并方从 candidates 移除）。
+- `merge`：合并的**目标 id** = `min(action.ids)`；目标 `name` ← `action.name`；`evidence_samples` / `code_paths` / `doc_paths` / `exposure` 在主线程内做**集合并去重**；目标 `origin` 不变；其它 id 从 candidates 移除（保留编号写入 `user_decision_summary.merged[].ids` 供审计）。
 - `rename`：只改 `name`，`origin` 不动。
 - `exclude`：直接从 candidates 移除；编号写入 `user_decision_summary.excluded_ids` 供审计。**不进入** `final.json.candidates`（与 §3.5 伪代码 `apply_exclude` 行为一致）。
 
@@ -137,7 +137,8 @@ candidates ← 阶段 1 的 Part 2 候选清单                # 每条 origin =
 reviews    ← 阶段 2 的 reviews                         # 初审结果
 round      ← 0
 parse_fail_streak ← 0                                 # 连续自然语言解析失败计数
-# next_id(): 取当前 candidates 中 max(id) + 1，跨轮单调递增；不与已删除项的 id 复用
+# next_id(): 维护跨轮单调递增的计数器；初值 = 阶段 1 scout 输出的 max(id) + 1；
+#            每次调用返回当前值后自增；exclude/split/merge 不回收已分配的 id。
 
 while True:
     # 展示
@@ -256,7 +257,7 @@ write_json("./analysis-report/feature-plan.json", {
    1) add 「IPv6 双栈」
    2) split 6 → 「证书签发」、「证书轮换」
    3) exclude 2、5
-   是否按以上执行？（yes / 修改这一条 / 重输）
+   是否按以上执行？（**回复 yes 执行；回复 "修改这一条" 或 "重输" 都不消耗轮次；其它任何回复（含 no / 不对 / ……）一律按反问处理，不消耗轮次**）
    ```
 
 2. **必须反问、不准猜测**：编号越界 / 名字不唯一 / 动作不清晰 → 反问，不计入轮次。

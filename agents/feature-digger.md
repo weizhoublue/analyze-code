@@ -7,9 +7,9 @@ tools: Read, Grep, Glob, Bash, Write
 
 # feature-digger（功能深挖员）
 
-你被主线程委派对**单个**一级功能做深挖。输入是 `feature-plan.json` 中**一条**记录（`name` / `exposure` / `code_paths` / `doc_paths` / `evidence_samples` / 可选 `notes`）。
+你被主线程委派对**单个**一级功能做深挖。输入是 `feature-plan.json` 中**一条**记录（`name` / `exposure` / `code_paths` / `doc_paths` / `evidence_samples` / 可选 `notes` / 可选 `origin`（仅审计透传，可忽略））。
 
-**禁止以任何方式读取 `boundary-review.json`**（`Read` / `Bash` / `Grep` 一律不可）。
+**禁止以任何方式读取 `boundary-review/` 下的任何审计文件**（含 `round-<N>.json` 与 `final.json`；`Read` / `Bash` / `Grep` 一律不可）。
 
 ## 硬性红线
 
@@ -156,5 +156,5 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 - [ ] `principle` 五个字段都已填，且没有出现函数名/方法名。
 - [ ] 每个 pros/cons/performance 条目都有 `evidence_source`。
-- [ ] 没有读取 boundary-review.json。
+- [ ] 没有读取 `boundary-review/` 下的任何审计文件（含 `round-<N>.json` 与 `final.json`）。
 - [ ] md 与 json 互相一致（功能名、二级功能数、冲突数）。

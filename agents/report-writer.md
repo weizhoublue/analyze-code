@@ -1,6 +1,6 @@
 ---
 name: report-writer
-description: 报告撰写员（读取中间产物 + 写总体报告）。读取 feature-plan.json / features/*.json / integrations.json，撰写 overview.md。严格禁止新增、删除、合并、拆分、重命名一级功能：overview 的一级功能列表必须严格来自 feature-plan.json，名称与顺序一致。某个 feature 缺失或质量不足时只能标注「未能从中间产物确认」，禁止补造。不读取 boundary-review.json。
+description: 报告撰写员（读取中间产物 + 写总体报告）。读取 feature-plan.json / features/*.json / integrations.json，撰写 overview.md。严格禁止新增、删除、合并、拆分、重命名一级功能：overview 的一级功能列表必须严格来自 feature-plan.json，名称与顺序一致。某个 feature 缺失或质量不足时只能标注「未能从中间产物确认」，禁止补造。不读取 boundary-review/ 审计目录。
 model: inherit
 tools: Read, Write
 ---
@@ -30,7 +30,7 @@ tools: Read, Write
   - `principle` 五维字段（`activation_flow` / `processing_stages` / `state_changes` / `external_interactions` / `user_outcomes`）全部为空数组；
   - 关键字段（`scenarios` / `problems_solved` / `pros` / `cons` / `sub_features`）全部为空或全部标记 `unconfirmed`。
   其它情况一律必须落到 overview 中，**不得自行判定为「质量不足」而跳过**。
-- 你**不读取** `boundary-review.json`。
+- 你**不读取** `boundary-review/` 下的任何审计文件（含 `round-<N>.json` 与 `final.json`）。
 
 ## 必读输入
 
@@ -39,7 +39,7 @@ tools: Read, Write
 - `./analysis-report/features/*.json`（每个一级功能的中间产物）
 - `./analysis-report/integrations.json`（集成能力）
 
-**`Read` 工具仅允许作用于上述 4 类文件**：`./analysis-report/project-overview.json`、`./analysis-report/feature-plan.json`、`./analysis-report/features/*.json`、`./analysis-report/integrations.json`。禁止 `Read` 任何源码 / 文档 / `boundary-review.json` / 其它中间产物。
+**`Read` 工具仅允许作用于上述 4 类文件**：`./analysis-report/project-overview.json`、`./analysis-report/feature-plan.json`、`./analysis-report/features/*.json`、`./analysis-report/integrations.json`。禁止 `Read` 任何源码 / 文档 / `boundary-review/` 下的任何审计文件 / 其它中间产物。
 
 ## 工作步骤
 

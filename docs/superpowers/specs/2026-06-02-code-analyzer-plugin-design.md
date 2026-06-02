@@ -1,9 +1,9 @@
 # 设计文档：code-analyzer Claude Code 插件
 
 - 日期：2026-06-02
-- 状态：修订 v5（在 v4 基础上补充：`project-overview.json` 中间产物，用于供 `report-writer` 填充 `overview.md` §1–§5）
+- 状态：修订 v6（在 v5 基础上补充：人工确认阶段改造为多轮迭代循环，`project-scout` 新增 `targeted` 窄扫模式，`feature-boundary-reviewer` 每轮全量重审，审计文件按轮拆开 `boundary-review/round-N.json` + `final.json`）
 - 来源需求：仓库根目录 `README.md`
-- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`（由 project-scout 返回 Part 1，主线程持久化）
+- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`（由 project-scout 返回 Part 1，主线程持久化）；v6 人工确认改造为多轮迭代（详见同目录 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md)）
 
 ## 1. 目标
 
@@ -46,7 +46,7 @@ Skill 作为「指挥」，把重活分派给 subagent，主线程只保留各 s
 ```text
 project-scout
    → feature-boundary-reviewer        [新增：功能边界校准]
-       → 人工确认（Skill 主线程暂停） [新增：用户裁剪范围 → 生成 feature-plan.json]
+       → 人工确认（Skill 主线程多轮循环，软上限 3 轮） [v6：用户裁剪/合并/拆分/重命名/新增 → 生成 feature-plan.json]
            → feature-digger × N（并行，按 feature-plan.json）
                → integration-analyst
                    → report-writer
@@ -66,6 +66,7 @@ project-scout
    - 返回两部分（结构化）：
      - **Part 1 项目级概览**：`main_language` / `runtime_platforms` / `overall_responsibility` / `scenarios` / `problems_solved` / `pros` / `cons` / `architecture_summary`（≤ 200 字、抽象层面，不含函数名/调用链）；主线程**原样写入** `./analysis-report/project-overview.json`，供 `report-writer` 在汇总阶段直接消费 overview §1–§5。Schema 见 §6.3.5。
      - **Part 2 一级功能候选清单**：每项含编号、名称、简述、用户暴露面、代码路径、文档路径、3~8 条证据样本。
+   - [v6] `project-scout` 同一个 agent 文件还支持 `mode: targeted` 窄扫模式，由阶段 3 用户 `add` 时触发；窄扫只对一个用户提名的功能名做定向证据搜索，预算上限约为初次扫描的 1/3 ~ 1/2 量级（Glob/Grep ~40%、Read 总次数 ~27%、Read 总行数 ~13%，具体见 `agents/project-scout.md` §C 与 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md) §7.3 预算表）；三态返回 `found` / `duplicate` / `not_found`。详见 `agents/project-scout.md` 的「窄扫模式」节。
 
 2. **功能边界校准阶段** [新增] → 调用 `feature-boundary-reviewer`（只读、轻量）：
    - 输入：`project-scout` 产出的候选清单与少量证据样本（**不重读全仓**）。
@@ -77,18 +78,21 @@ project-scout
    - 每条标注必须附**简短理由**（不超过 2 行）与**关键证据来源**（暴露面 / 文档 / 代码路径）。
    - 输出：经校准的候选清单（结构化 JSON + 人类可读的呈现）。
 
-3. **人工确认阶段** [新增] → Skill 主线程暂停，等待用户输入：
-   - 向用户展示候选清单（编号 + 名称 + 一句话简述 + 校准建议）。
-   - 提示语统一为：
-     > 我已经生成候选一级功能清单。请输入需要剔除的功能编号，例如：`2 5 7`。
-     > 直接回车表示全部保留。也可以输入自由指令进行合并/拆分/重命名，例如：`merge 3 4 -> 配置管理`、`split 6 -> A, B`、`rename 1 -> 新名称`。
-   - 接收并解析用户输入，得出**最终一级功能清单**。
-   - **生成两份文件**：
-     - `./analysis-report/boundary-review.json`：**审计文件**，保留候选、review、用户操作、合并拆分历史。
-     - `./analysis-report/feature-plan.json` [新增]：**执行文件**，仅包含 `feature-digger` 所需的最终功能定义（名称、暴露面、代码路径、文档路径、证据样本引用），结构扁平、不含历史。后续 `feature-digger` 只读此文件。
+3. **人工确认阶段** [v6 改造] → Skill 主线程进入**多轮 review-modify-confirm 循环**，软上限 3 轮（不强制终止）：
+   - 每轮展示当前候选清单（编号 + 名称 + 一句话简述 + reviewer 校准建议）+ 提示词。
+   - 用户以**中文自然语言**输入修改意见；主线程把意见归一化到内部动作集 `add / exclude / split / merge / rename / done`，归一化后**强制复述确认**。反问与复述确认**都不消耗轮次**；连续解析失败 ≥ 3 次进入兜底（贴回提示词与字面切分展示）。
+   - 本轮所有 `add` 动作交 `project-scout (mode: targeted)` 窄扫；找到证据才接受，`not_found` 直接跳过该 add，**其它指令继续生效**。
+   - 本轮 `split / merge / rename / exclude` 由主线程内存处理；之后整张候选清单交 `feature-boundary-reviewer` **全量重审**，并附带上一轮 `prev_reviews` 作为**稳定性比对偏好**（**仅供参考，不作为判定来源**）。
+   - 每条候选携带 `origin ∈ {scout-initial, user-added@round-N, user-split-from-<id>@round-N, 以及未来扩展的任意非 scout-initial 取值}` 用于审计回溯；**`merge` / `rename` / `exclude` 不改 `origin`**（合并目标保留原 origin、rename 仅改 name、exclude 直接从 candidates 移除）；**reviewer 判定时禁止因 origin 调整 decision**（agent 红线 7）。
+   - 退出条件：用户输入 `done` / `ok` / 直接回车。退出时若 `keep` 项数 == 0，主线程拒绝退出并提示 add 至少一项。
+   - **审计文件**：每一轮写入 `./analysis-report/boundary-review/round-<N>.json`（包含 `user_raw_input` / `parsed_actions` / `scout_supplements` / `candidates_after_round` / `reviews_after_round`）。
+   - **最终态文件**：`./analysis-report/boundary-review/final.json`（candidates + reviews + user_decision_summary + rounds_index）；被 `exclude` 的项**不进入** `final.json.candidates`，编号写入 `user_decision_summary.excluded_ids` 供审计。
+   - **执行文件**：`./analysis-report/feature-plan.json`（仅在 done 后生成一次；扁平结构 + 可选 `origin`），后续 `feature-digger` 只读此文件。
+
+   完整伪代码、提示词、解析红线、失败场景，见 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md) §4 / §6 / §10。
 
 4. **深挖阶段** → 对 `feature-plan.json` 中的每个一级功能（尽量并行）调用 `feature-digger`：
-   - 仅以 `feature-plan.json` 中的一条记录作为输入，**不读取** `boundary-review.json`。
+   - 仅以 `feature-plan.json` 中的一条记录作为输入，**不读取** `boundary-review/` 下的任何审计文件。
    - 强制双源流程：先读文档理解设计意图/原理/场景，再读代码验证；**交叉印证**；遇到冲突按 §7.4「冲突处理优先级」处理。
    - **深挖深度限制（强约束）** [新增]：
      - **不追踪完整调用链，不展开函数级实现**。
@@ -155,7 +159,11 @@ project-scout
 ./analysis-report/
 ├── overview.md                # 总体报告
 ├── project-overview.json      # [v5] 项目级概览：语言/平台/职责/场景/痛点/优缺点/架构摘要；overview.md §1–§5 唯一数据源
-├── boundary-review.json       # 审计文件：候选清单 + 校准建议 + 用户最终决策 + 合并拆分历史
+├── boundary-review/                       # v6：按轮拆分
+│   ├── round-1.json                       # 每轮一份审计快照
+│   ├── round-2.json
+│   ├── ...
+│   └── final.json                         # 最终态
 ├── feature-plan.json          # 执行文件：feature-digger 的唯一输入，扁平、不含历史
 ├── integrations.json          # 集成分析中间产物
 └── features/
@@ -198,40 +206,55 @@ project-scout
 
 ### 6.3 结构化中间产物 [新增]
 
-#### 6.3.1 `boundary-review.json`（审计文件）
+#### 6.3.1 `boundary-review/round-<N>.json` [v6] 与 `final.json`（按轮拆分的审计产物）
+
+`boundary-review/round-<N>.json` 是阶段 3 多轮循环里**每轮一份**的审计快照：
 
 ```json
 {
-  "candidates": [
-    {
-      "id": 1,
-      "name": "...",
-      "summary": "...",
-      "exposure": ["cli", "api", "ui", "sdk", "crd", "config", "doc-scenario"],
-      "code_paths": ["..."],
-      "doc_paths": ["..."],
-      "evidence_samples": [
-        {"path": "...", "kind": "cli|api|crd|config|doc|code-comment", "snippet": "...", "lineno": 0}
-      ],
-      "review": {
-        "decision": "keep | exclude | merge | split",
-        "reason": "...",
-        "merge_target": null,
-        "merge_with_ids": [],
-        "split_into": null,
-        "evidence": ["..."]
-      }
-    }
+  "round": 1,
+  "user_raw_input": "...原文...",
+  "parsed_actions": [
+    {"op":"add",     "name":"IPv6 双栈"},
+    {"op":"split",   "id":6, "into":["证书签发","证书轮换"]},
+    {"op":"merge",   "ids":[3,4], "name":"配置管理"},
+    {"op":"rename",  "id":1, "name":"网络策略管理"},
+    {"op":"exclude", "ids":[2,5,7]}
   ],
-  "user_decision": {
-    "excluded_ids": [2, 5, 7],
-    "renames": {"1": "新名称"},
-    "merges": [{"ids": [3, 4], "name": "..."}],
-    "splits": [{"id": 6, "into": ["A", "B"]}],
-    "final_features": ["..."]
-  }
+  "scout_supplements": [
+    {"query":"IPv6 双栈","result":"found","candidate":{ "name":"...", "evidence_samples":[] }},
+    {"query":"...",     "result":"not_found","tried_keywords":[],"reason":"..."}
+  ],
+  "candidates_after_round": [
+    {"id":1,"name":"网络策略管理","origin":"scout-initial","summary":"...",
+     "exposure":["..."],"code_paths":["..."],"doc_paths":["..."],
+     "evidence_samples":[{"path":"...","kind":"...","snippet":"...","lineno":0}]}
+  ],
+  "reviews_after_round": {
+    "1": {"decision":"keep","reason":"...","evidence":["..."]}
+  },
+  "warnings": []
 }
 ```
+
+`boundary-review/final.json` 是循环退出后**写入一次**的最终态：
+
+```json
+{
+  "candidates": [],
+  "reviews":    { "<id>": {"decision":"keep","reason":"...","evidence":[]} },
+  "user_decision_summary": {
+    "added":   [{"name":"...","round":2}],
+    "split":   [{"from_id":6,"into":["A","B"],"round":1}],
+    "merged":  [{"ids":[3,4],"name":"配置管理","round":1}],
+    "renamed": [{"id":1,"name":"...","round":1}],
+    "excluded_ids": [2,5,7]
+  },
+  "rounds_index": ["round-1","round-2"]
+}
+```
+
+`origin` 字段取值：`scout-initial` / `user-added@round-N` / `user-split-from-<id>@round-N` / 以及未来扩展的任意非 `scout-initial` 取值。仅用于审计回溯，禁止用作 reviewer 判定输入（§7 R7）。`merge` / `rename` / `exclude` 不改变 `origin`。
 
 #### 6.3.2 `feature-plan.json` [新增]（执行文件，feature-digger 唯一输入）
 
@@ -246,7 +269,8 @@ project-scout
       "evidence_samples": [
         {"path": "...", "kind": "cli|api|crd|config|doc|code-comment", "snippet": "...", "lineno": 0}
       ],
-      "notes": "可选：合并/拆分/重命名后留给 digger 的附加上下文（如『此功能由原 #3+#4 合并而成，请重点验证 X』）"
+      "notes": "可选：合并/拆分/重命名后留给 digger 的附加上下文（如『此功能由原 #3+#4 合并而成，请重点验证 X』）",
+      "origin": "scout-initial | user-added@round-N | user-split-from-<id>@round-N"
     }
   ]
 }
@@ -254,8 +278,9 @@ project-scout
 
 字段说明：
 - 结构扁平，不含 `candidates` / `review` / `user_decision` / 历史。
-- `evidence_samples` 直接复用自 `boundary-review.json` 中**保留下来**的样本，避免 digger 再次定位。
+- `evidence_samples` 直接复用自 `boundary-review/final.json.candidates[].evidence_samples` 中**保留下来**的样本，避免 digger 再次定位。
 - 该文件由人工确认阶段在主线程生成（Skill 直接写，不交给 agent）。
+- `origin`：v6 新增可选字段；取值与 `boundary-review/final.json` 中一致；**仅审计透传**，`feature-digger` 与 `report-writer` 可忽略。
 
 #### 6.3.3 `features/<功能名>.json`
 
@@ -360,6 +385,11 @@ project-scout
 5. **当文档与代码冲突时，以当前代码实现和用户可见入口为准，并标记冲突**（按 §7.4 优先级）。
 6. **不要输出函数级调用链。**工作原理应描述为：用户流程、系统抽象流程、状态变化、外部交互。
 
+[v6 扩展约束]
+
+- **R7（reviewer 中立判定）**：`feature-boundary-reviewer` 在打 `decision` 时禁止因为 `origin = user-added` 或 `origin = user-split-from-*` 或任意非 `scout-initial` 取值而调整结论；origin 仅用于审计回溯。`prev_reviews` 也仅供 reviewer 做稳定性比对偏好，**不作为判定来源**。
+- **R8（scout 窄扫强制三态）**：`project-scout (mode: targeted)` 必须返回 `found` / `duplicate` / `not_found` 三态之一；预算耗尽未命中**必须** `not_found`，禁止再多查一次。
+
 ### 7.3 业务功能判定规则 [新增]
 
 **符合以下条件之一，可视为业务功能：**
@@ -401,7 +431,7 @@ project-scout
 为避免在勘察阶段就吃光主对话上下文：
 
 - **禁止全文读取所有文档与源码**。必须先用 `Glob` / `Grep` 建立索引，再定向打开与用户暴露面、功能介绍、配置、API、CLI、CRD 相关的高价值文件。
-- 每个候选功能在 `boundary-review.json` 中最多保留 **3~8 条**关键证据样本（每条含 `path` / `kind` / `snippet` / `lineno`）。
+- 每个候选功能在 `boundary-review/round-<N>.json` 与 `final.json.candidates[]` 中最多保留 **3~8 条**关键证据样本（每条含 `path` / `kind` / `snippet` / `lineno`）。
 - 证据优先级：**暴露面定义 > 用户文档 > 配置 schema / API 定义 > 模块 README > 代码 docstring / 注释 > 普通源码片段**。
 - `feature-digger` 可在深挖时按需读取更多上下文，但同样不得无差别全量读取，原则上以 `feature-plan.json` 提供的路径与样本为起点。
 
