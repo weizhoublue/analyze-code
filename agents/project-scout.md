@@ -179,6 +179,14 @@ tools: Read, Grep, Glob, Bash
 }
 ```
 
+## 质审回灌修订（由 SKILL 阶段 1b 触发）
+
+当主线程在 prompt 中附带 `quality-review/project-overview-round-<N>.json` 的 `issues[]` 时：
+
+- **仅修订 Part 1** 项目级概览 JSON；**保持 Part 2 候选清单不变**（不重扫全仓、不增删候选 id）。
+- 逐条处理 `severity ∈ {blocking, major}`：加深 NarrativeBlock、补 `module_landscape`、修正 tier/refs。
+- 完成后在返回 markdown 中同时给出更新后的 Part 1 与**未改动的** Part 2。
+
 ## 窄扫模式（targeted mode）—— 由 SKILL 阶段 3 用户 `add` 时触发
 
 当主线程在 prompt 头部声明 `mode: targeted`，本 agent 进入窄扫模式；此模式**仅对一个用户提名的功能名做定向证据搜索**，不重做全仓索引，不更新 Part 1 项目级概览。

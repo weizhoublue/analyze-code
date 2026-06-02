@@ -31,6 +31,13 @@ tools: Read, Grep, Glob, Bash, Write
   5. **user_outcomes** 最终结果：用户得到什么产物、反馈、副作用。
 - 一旦发现自己在沿源码深入函数实现，**立即停下**回到上述 5 维抽象。
 
+## 叙事深度要求（v7）
+
+- `scenarios` ≥ 2 条 NarrativeBlock；`problems_solved` ≥ 2 条。
+- 每条 `narrative` 150~400 字（中文），覆盖：情境、痛点/目标、背景（有则写）、`terms` 解释术语。
+- `industry_context_notes` ≤ 2 条；不得把 `industry_context` 放进 `problems_solved` / `scenarios` 主列表。
+- 每个 `sub_features`：`narrative` 150~300 字，`boundary_with_parent` 必填。
+
 ## Bash 使用约束
 
 **`Bash` 仅用于 `ls` / `stat` / `wc` 等元数据查询；禁止用于读取文件内容（如 `cat` / `head` / `tail` / `find -exec cat` / `rg -A` 等读取等价操作一律不允许）。所有文件内容一律走 `Read` 或 `Grep`。**
@@ -52,7 +59,7 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 1. **读输入** `feature-plan.json` 中分配给你的那一条（主线程会在 prompt 中直接给出 JSON 内容；如未给，则 `Read ./analysis-report/feature-plan.json` 并按 `name` 定位）。若 `feature-plan.json` 中未匹配到该 `name`，立即停止深挖，返回错误摘要给主线程（`Status: BLOCKED; reason: feature name not found in feature-plan.json`），不写任何产物。
 2. **先读文档**：按 `doc_paths` + `evidence_samples` 中 `kind=doc` 的项读取，理解设计意图、场景、用户流程。
-3. **再读代码验证**：按 `code_paths` 与 `evidence_samples` 中 `kind in (cli, api, crd, config, code-comment)` 的项定向读取；**不要无差别遍历**。预算上限：**单次 Read ≤ 200 行；整轮 Read 总数 ≤ 25 次；整轮 Grep 总数 ≤ 15 次；Glob 仅用于在 `code_paths` 内定位文件后再 Grep，禁止仓库级全局 Glob。**
+3. **再读代码验证**：按 `code_paths` 与 `evidence_samples` 中 `kind in (cli, api, crd, config, code-comment)` 的项定向读取；**不要无差别遍历**。预算上限：**单次 Read ≤ 200 行；整轮 Read 总数 ≤ 35 次**（优先增量读 CHANGELOG、设计 doc、ADR）；**整轮 Grep 总数 ≤ 15 次**；Glob 仅用于在 `code_paths` 内定位文件后再 Grep，禁止仓库级全局 Glob。
 4. **填 5 维原理**：每个维度 1~5 条短句，禁止函数级描述。
 5. **找冲突**：对照文档与代码差异，按优先级裁决并记录。
 6. **找未确认**：所有无法从文档/代码中得到证据的字段，写「未能从文档和代码中确认：<具体说明>」。
@@ -71,7 +78,18 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 ## 应用场景
 
+### <scenario.title>
+<narrative 段落>
+（证据: <evidence_tier>；refs: <逗号分隔>）
+
 ## 解决的问题与痛点
+
+### <problems_solved.title>
+<narrative 段落>
+（证据: <evidence_tier>；refs: ...）
+
+#### 行业背景补充（无项目内证据）
+（仅当 industry_context_notes 非空时输出本节）
 
 ## 优点
 - 每条须标注证据来源（doc / code / both）
@@ -90,8 +108,11 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 - 若无证据 → 未能从文档和代码中确认
 
 ## 二级功能
-- <子功能 1>：说明（证据来源）
-- <子功能 2>：说明（证据来源）
+
+### <sub_features.name>
+<narrative 段落>
+与一级功能边界：<boundary_with_parent>
+（证据: <evidence_tier>；refs: ...）
 
 ## 依据来源标注
 - 文档 / 代码 / 二者一致 / 存在差异
@@ -114,8 +135,36 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
     ],
     "unconfirmed": false
   },
-  "scenarios": ["..."],
-  "problems_solved": ["..."],
+  "scenarios": [
+    {
+      "title": "≤ 40 字",
+      "narrative": "150~400 字",
+      "evidence_tier": "confirmed",
+      "background": "",
+      "terms": [{"term": "...", "glossary": "..."}],
+      "refs": ["..."]
+    }
+  ],
+  "problems_solved": [
+    {
+      "title": "≤ 40 字",
+      "narrative": "150~400 字",
+      "evidence_tier": "doc_declared",
+      "background": "",
+      "terms": [],
+      "refs": ["..."]
+    }
+  ],
+  "industry_context_notes": [
+    {
+      "title": "...",
+      "narrative": "≤ 120 字",
+      "evidence_tier": "industry_context",
+      "background": "",
+      "terms": [],
+      "refs": []
+    }
+  ],
   "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
   "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
   "principle": {
@@ -129,13 +178,31 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
   "performance": {
     "claims": [{"claim": "...", "evidence_source": "doc|code|both|none", "refs": ["..."]}]
   },
-  "sub_features": [{"name": "...", "description": "...", "evidence_source": "...", "refs": ["..."]}],
+  "sub_features": [
+    {
+      "name": "证书轮换",
+      "narrative": "150~300 字",
+      "boundary_with_parent": "≤ 60 字：与一级的边界",
+      "evidence_tier": "confirmed",
+      "terms": [],
+      "refs": ["..."]
+    }
+  ],
   "conflicts": [{"description": "...", "resolution": "按规则 N 处理：..."}],
   "unconfirmed": ["未能从文档和代码中确认：..."]
 }
 ```
 
 `activation.unconfirmed` 为 JSON 布尔值（`true` / `false`，不要加引号）；取 `true` 当且仅当 `modes` 中存在无法从文档和代码中确认的启用方式。其他字段中含 "..." 的均为字符串占位符。
+
+## 质审回灌修订（由 SKILL 阶段 4 质审触发）
+
+当主线程在 prompt 中附带 `quality-review/features/<名>-round-<N>.json` 的 `issues[]` 时：
+
+- **仅修订** `./analysis-report/features/<名>.json` 与 `./analysis-report/features/<名>.md`。
+- 逐条处理 `severity ∈ {blocking, major}`：加深 narrative、补 refs/tier/terms、加厚 sub_features。
+- **禁止**读取或修改 `feature-plan.json`、`boundary-review/`。
+- 完成后返回摘要并注明 `revision_round: <N>`。
 
 ## 返回给主线程的摘要（仅）
 
@@ -158,3 +225,6 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 - [ ] 每个 pros/cons/performance 条目都有 `evidence_source`。
 - [ ] 没有读取 `boundary-review/` 下的任何审计文件（含 `round-<N>.json` 与 `final.json`）。
 - [ ] md 与 json 互相一致（功能名、二级功能数、冲突数）。
+- [ ] scenarios ≥ 2、problems_solved ≥ 2，narrative 达 150~400 字量级。
+- [ ] 无 confirmed 条目 refs 为空；industry_context_notes ≤ 2。
+- [ ] 每个 sub_features 含 narrative ≥ 80 字与 boundary_with_parent。
