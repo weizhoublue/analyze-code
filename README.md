@@ -51,4 +51,38 @@ plugin 最终输出多份报告：
     该一级功能包含了哪些 二级功能 ，各种二级功能的说明
 
 
+---
 
+## 使用方式（plugin 安装后）
+
+在 Claude Code 中加载本目录作为插件后，对**待分析项目**目录运行以下指令：
+
+```text
+/code-analyzer:analyze-codebase
+```
+
+执行流程：
+
+1. `project-scout` 完成索引与候选清单；主线程将项目级概览写入 `./analysis-report/project-overview.json`。
+2. `feature-boundary-reviewer` 给出 keep/exclude/merge/split 建议。
+3. **会暂停等待你输入**：要剔除的候选编号（如 `2 5 7`），或合并/拆分/重命名指令；直接回车表示全部保留。
+4. 主线程把最终决策写入 `./analysis-report/boundary-review.json` 与 `./analysis-report/feature-plan.json`。
+5. 多个 `feature-digger` 并行深挖剩余功能。
+6. `integration-analyst` 完成集成三分类。
+7. `report-writer` 汇总产出 `overview.md`。
+
+产物路径（在**被分析项目**目录下）：
+
+```text
+./analysis-report/
+├── overview.md              # 总体报告
+├── project-overview.json    # 项目级概览（语言/平台/职责/场景/痛点/优缺点/架构摘要）
+├── boundary-review.json     # 审计：候选 + 校准 + 用户决策
+├── feature-plan.json        # 执行：digger 唯一输入
+├── integrations.json        # 集成能力三分类
+└── features/
+    ├── <一级功能名>.md
+    └── <一级功能名>.json
+```
+
+设计依据：`docs/superpowers/specs/2026-06-02-code-analyzer-plugin-design.md`。
