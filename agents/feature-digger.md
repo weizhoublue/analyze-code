@@ -59,9 +59,9 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 ## 工作步骤
 
-1. **读输入** `feature-plan.json` 中分配给你的那一条（主线程会在 prompt 中直接给出 JSON 内容；如未给，则 `Read ./analysis-report/feature-plan.json` 并按 `name` 定位）。若 `feature-plan.json` 中未匹配到该 `name`，立即停止深挖，返回错误摘要给主线程（`Status: BLOCKED; reason: feature name not found in feature-plan.json`），不写任何产物。
+1. **读输入** `feature-plan.json` 中分配给你的那一条（主线程会在 prompt 中直接给出 JSON 内容；如未给，则 `Read ./analysis-report/feature-plan.json` 并**优先按 `slug` 定位**，其次按 `name`）。若均未匹配，立即停止深挖，返回 `Status: BLOCKED; reason: feature not found in feature-plan.json`，不写任何产物。
 2. **先读文档**：按 `doc_paths` + `evidence_samples` 中 `kind=doc` 的项读取，理解设计意图、场景、用户流程。
-3. **再读代码验证**：按 `code_paths` 与 `evidence_samples` 中 `kind in (cli, api, crd, config, code-comment)` 的项定向读取；**不要无差别遍历**。预算上限：**单次 Read ≤ 200 行；整轮 Read 总数 ≤ 35 次**（优先增量读 CHANGELOG、设计 doc、ADR）；**整轮 Grep 总数 ≤ 15 次**；Glob 仅用于在 `code_paths` 内定位文件后再 Grep，禁止仓库级全局 Glob。
+3. **再读代码验证**：按 `code_paths` 与 `evidence_samples` 中 `kind in (cli, api, crd, config, code-comment)` 的项定向读取；**不要无差别遍历**。预算上限：**单次 Read ≤ 200 行；整轮 Read 总数 ≤ 35 次**（优先增量读 CHANGELOG、设计 doc、ADR）；**整轮 Grep 总数 ≤ 15 次**；**Glob ≤ 8 次**，仅用于在 `code_paths` 内定位文件后再 Grep，禁止仓库级全局 Glob。
 4. **填 5 维原理**：每个维度 1~5 条短句，禁止函数级描述。
 5. **找冲突**：对照文档与代码差异，按优先级裁决并记录。
 6. **找未确认**：所有无法从文档/代码中得到证据的字段，写「未能从文档和代码中确认：<具体说明>」。
@@ -83,6 +83,8 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 ### <scenario.title>
 <narrative 段落>
 （证据: <evidence_tier>；refs: <逗号分隔>）
+（若 background 非空：另起一段 **背景：** …）
+（若 terms 非空：**术语：** term — glossary）
 
 ## 解决的问题与痛点
 
@@ -204,7 +206,7 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 - **仅修订** `./analysis-report/features/<slug>.json` 与 `./analysis-report/features/<slug>.md`（`slug` 不变）。
 - 逐条处理 `severity ∈ {blocking, major}`：加深 narrative、补 refs/tier/terms、加厚 sub_features。
 - **禁止**读取或修改 `feature-plan.json`、`boundary-review/`。
-- 完成后返回摘要并注明 `revision_round: <N>`。
+- 禁止重扫全仓、禁止改 `slug`；完成后返回摘要并注明 `revision_round: <N>`。
 
 ## 返回给主线程的摘要（仅）
 
@@ -229,4 +231,5 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 - [ ] md 与 json 互相一致（功能名、二级功能数、冲突数）。
 - [ ] scenarios ≥ 2、problems_solved ≥ 2，narrative 达 150~400 字量级。
 - [ ] 无 confirmed 条目 refs 为空；industry_context_notes ≤ 2。
-- [ ] 每个 sub_features 含 narrative ≥ 80 字与 boundary_with_parent。
+- [ ] sub_features ≥ 1 条；每项 narrative 150~300 字且有 boundary_with_parent。
+- [ ] `doc_declared` 含 doc 路径；`industry_context` 不在 scenarios/problems_solved 主列表。

@@ -90,7 +90,7 @@ project-scout
    - 每条候选携带 `origin ∈ {scout-initial, user-added@round-N, user-split-from-<id>@round-N, 以及未来扩展的任意非 scout-initial 取值}` 用于审计回溯；**`merge` / `rename` / `exclude` 不改 `origin`**（合并目标保留原 origin、rename 仅改 name、exclude 直接从 candidates 移除）；**reviewer 判定时禁止因 origin 调整 decision**（agent 红线 7）。
    - 退出条件：用户输入 `done` / `ok` / 直接回车。退出时若 `keep` 项数 == 0，主线程拒绝退出并提示 add 至少一项。
    - **审计文件**：每一轮写入 `./analysis-report/boundary-review/round-<N>.json`（包含 `user_raw_input` / `parsed_actions` / `scout_supplements` / `candidates_after_round` / `reviews_after_round`）。
-   - **最终态文件**：`./analysis-report/boundary-review/final.json`（candidates + reviews + user_decision_summary + rounds_index）；被 `exclude` 的项**不进入** `final.json.candidates`，编号写入 `user_decision_summary.excluded_ids` 供审计。
+   - **最终态文件**：`./analysis-report/boundary-review/final.json`（candidates + reviews + user_decision_summary + rounds_index）；**用户 `exclude` 操作**移除的项不进入 `final.json.candidates`（reviewer 的 `exclude` 建议仍保留在 candidates 中供用户决定），编号写入 `user_decision_summary.excluded_ids` 供审计。
    - **执行文件**：`./analysis-report/feature-plan.json`（仅在 done 后生成一次；扁平结构 + 可选 `origin`），后续 `feature-digger` 只读此文件。
 
    完整伪代码、提示词、解析红线、失败场景，见 [`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md) §4 / §6 / §10。
@@ -126,10 +126,10 @@ project-scout
    - 向主线程仅返回精简摘要。
 
 6. **汇总阶段** → 调用 `report-writer`（可写）：
-   - **直接读取 `./analysis-report/project-overview.json`、`feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传；可读 `quality-review/*-final.json` 列出 unresolved。
+   - **直接读取 `./analysis-report/project-overview.json`、`feature-plan.json`、`features/*.json`、`integrations.json` 中间产物**，不依赖摘要回传；可读 `quality-review/**/*-final.json` 列出 unresolved。
    - `overview.md` §1–§5 与 **§6 功能模块与协作关系** 严格来自 `project-overview.json`（含 `module_landscape`）；§7 一级功能；§8 集成；§9 综合说明（含质审 unresolved）。
    - **严格禁止新增、删除、合并、拆分、重命名一级功能**：`overview.md` 中的一级功能列表必须**严格来自 `feature-plan.json`**，顺序与命名一致（参见 §7.7）。
-   - 若某个 feature 的 `features/<名>.json` 缺失或质量不足，只能标记为「**未能从中间产物确认**」，**不得自行补造**内容。
+   - 若某个 feature 的 `features/<slug>.json` 缺失或质量不足，只能标记为「**未能从中间产物确认**」，**不得自行补造**内容。
    - 输出 `./analysis-report/overview.md`（总体报告）。
    - 在「一级功能」一节用 `name` 展示、链接到 `features/<slug>.md`。
    - 体现「文档描述」与「代码实现」的综合视角，必要时引用冲突记录。
@@ -296,22 +296,19 @@ project-scout
 
 #### 6.3.3 `features/<slug>.json`
 
+v7 使用 **NarrativeBlock**（见 [`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md) §3）作为 `scenarios[]` / `problems_solved[]` 元素；完整 JSON 示例见 `agents/feature-digger.md`。
+
 ```json
 {
-  "feature": "<一级功能名>",
+  "feature": "<一级功能展示名>",
   "confidence": "high | medium | low",
   "exposure": ["cli", "api", "ui", "sdk", "crd", "config", "doc-scenario"],
-  "activation": {
-    "modes": ["cli-flag", "config-file", "crd-field", "api-call", "ui-action", "default-on"],
-    "details": [
-      {"mode": "cli-flag", "example": "...", "refs": ["..."]}
-    ],
-    "unconfirmed": false
-  },
-  "scenarios": ["..."],
-  "problems_solved": ["..."],
-  "pros":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
-  "cons":  [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "activation": { "modes": ["..."], "details": [{"mode": "...", "example": "...", "refs": ["..."]}], "unconfirmed": false },
+  "scenarios": [{"title": "...", "narrative": "150~400字", "evidence_tier": "confirmed|doc_declared", "background": "", "terms": [], "refs": ["..."]}],
+  "problems_solved": [{"title": "...", "narrative": "150~400字", "evidence_tier": "...", "background": "", "terms": [], "refs": ["..."]}],
+  "industry_context_notes": [{"title": "...", "narrative": "≤120字", "evidence_tier": "industry_context", "refs": []}],
+  "pros": [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
+  "cons": [{"point": "...", "evidence_source": "doc|code|both", "refs": ["..."]}],
   "principle": {
     "summary": "...",
     "activation_flow": ["..."],
@@ -320,16 +317,24 @@ project-scout
     "external_interactions": ["..."],
     "user_outcomes": ["..."]
   },
-  "performance": {
-    "claims": [{"claim": "...", "evidence_source": "doc|code|both|none", "refs": ["..."]}]
-  },
-  "sub_features": [{"name": "...", "description": "...", "evidence_source": "...", "refs": ["..."]}],
+  "performance": {"claims": [{"claim": "...", "evidence_source": "doc|code|both|none", "refs": ["..."]}]},
+  "sub_features": [{
+    "name": "...",
+    "narrative": "150~300字",
+    "boundary_with_parent": "≤60字",
+    "evidence_tier": "confirmed|doc_declared",
+    "terms": [],
+    "refs": ["..."]
+  }],
   "conflicts": [{"description": "...", "resolution": "按 §7.4 规则 N 处理：..."}],
   "unconfirmed": ["未能从文档和代码中确认：..."]
 }
 ```
 
-`principle` 的 5 个字段严格对应 §7.6 五维深度限制。
+字段说明：
+- `scenarios` ≥ 2；`problems_solved` ≥ 2；`sub_features` ≥ 1（功能级）。
+- `industry_context` tier **不得**进入 `scenarios` / `problems_solved` 主列表。
+- `principle` 五维严格对应 §7.6；禁止函数级调用链描述。
 
 #### 6.3.4 `integrations.json`
 
@@ -467,8 +472,8 @@ v7 使用 **NarrativeBlock**（见 [`2026-06-02-report-depth-and-quality-agent-d
 **`report-writer` 一级功能完整性约束**：
 - **不得新增、删除、合并、拆分、重命名一级功能。**
 - `overview.md` 的「一级功能」清单必须**严格来自** `feature-plan.json`，名称、顺序保持一致。
-- 若某个 feature 的 `features/<名>.json` 缺失、内容明显空洞或质量不足，**只能标记为「未能从中间产物确认」**，不得自行补造场景、优缺点、原理、性能、二级功能等内容。
-- 在总体报告中可以引用 `features/<名>.md`，但不得在 overview 中重新定义功能边界。
+- 若某个 feature 的 `features/<slug>.json` 缺失、内容明显空洞或质量不足，**只能标记为「未能从中间产物确认」**，不得自行补造场景、优缺点、原理、性能、二级功能等内容。
+- 在总体报告中可以引用 `features/<slug>.md`，但不得在 overview 中重新定义功能边界。
 
 ### 7.8 其他原则
 

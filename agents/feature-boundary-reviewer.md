@@ -88,7 +88,7 @@ tools: Read, Grep, Glob
 - `candidates`：本轮处理后的完整新清单，每条带 `origin`。
 - `prev_reviews`（可选）：上一轮的 `{<id>: {decision, reason}}`。**仅供你做稳定性比对偏好**，**禁止**当作判定来源（红线 7 仍然适用）。可参考的策略：若某条的 `evidence_samples` 与 `prev_reviews` 出现时一致且 `origin == scout-initial`，鼓励保留原判定；否则按规则独立判定，不要复制粘贴上轮 `reason`。
 
-如果主线程未传 `prev_reviews`（例如初审），就走纯独立判定路径，与本节 Other bullets 一致。
+如果主线程未传 `prev_reviews`（例如初审），就走纯独立判定路径（仅依据 candidates 与证据样本，不参考上轮 reason）。
 
 ## 返回格式
 

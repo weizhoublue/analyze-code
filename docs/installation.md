@@ -54,7 +54,7 @@ claude plugin install code-analyzer@analyze-code
 钉到特定分支/标签：
 
 ```bash
-claude plugin marketplace add weizhoublue/analyze-code@v0.1.0
+claude plugin marketplace add weizhoublue/analyze-code@v0.2.0
 ```
 
 非 GitHub 主机（GitLab / Bitbucket / 自建服务器）用完整 URL，`#ref` 钉分支或标签：
@@ -208,7 +208,7 @@ claude plugin validate .
 
 本仓库当前的版本来源（Claude Code 解析顺序）：
 
-1. `plugin.json` 的 `version` 字段（当前是 `0.1.0`） →
+1. `plugin.json` 的 `version` 字段（当前是 `0.2.0`） →
 2. marketplace 条目里的 `version`（未设） →
 3. 否则使用 git commit SHA。
 

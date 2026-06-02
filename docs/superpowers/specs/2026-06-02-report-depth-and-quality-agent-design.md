@@ -69,11 +69,11 @@ v6 完成后，分析报告在以下方面仍偏薄：
 
 - 仅收纳 `evidence_tier == industry_context` 的条目。
 - **全项目**在 `project-overview.json` 中 `industry_context_notes[]` **≤ 3 条**，每条 narrative **≤ 150 字**。
-- 功能级在 `features/<名>.json` 中 `industry_context_notes[]` **≤ 2 条**，每条 **≤ 120 字**。
+- 功能级在 `features/<slug>.json` 中 `industry_context_notes[]` **≤ 2 条**，每条 **≤ 120 字**。
 
 ### 3.4 数量下限
 
-| 字段 | 项目级 (`project-overview.json`) | 功能级 (`features/<名>.json`) |
+| 字段 | 项目级 (`project-overview.json`) | 功能级 (`features/<slug>.json`) |
 | --- | --- | --- |
 | `scenarios` | ≥ 2 条 NarrativeBlock | ≥ 2 条 |
 | `problems_solved` | ≥ 3 条 NarrativeBlock | ≥ 2 条 |
@@ -144,7 +144,7 @@ v6 完成后，分析报告在以下方面仍偏薄：
 
 `pros` / `cons` / `principle` / `performance` / `activation` 结构不变。
 
-### 5.2 Markdown 模板（`features/<名>.md`）
+### 5.2 Markdown 模板（`features/<slug>.md`）
 
 - **应用场景**：每个 scenario 使用 `### <title>` + 段落（来自 `narrative` + 可选 `background`），段末标注 `(证据: confirmed, refs: ...)`.
 - **解决的问题与痛点**：同上；若有 `industry_context_notes`，增加子节 `#### 行业背景补充（无项目内证据）`。
@@ -187,8 +187,8 @@ v6 完成后，分析报告在以下方面仍偏薄：
   → 质审 target: project-overview
   → 通过后进入阶段 2
 
-阶段 4（每个 feature-digger 写完 features/<名>.json + .md 后）
-  → 质审 target: features/<名>
+阶段 4（每个 feature-digger 写完 features/<slug>.json + .md 后）
+  → 质审 target: features/<slug>
   → 通过后该 feature 标记 done；全部 done 后进入阶段 5
 
 阶段 5（integration-analyst 写入 integrations.json 后、report-writer 前）
@@ -231,7 +231,7 @@ if round > 5 and 仍有 blocking issues:
 
 ```json
 {
-  "target": "project-overview | features/<名> | integrations",
+  "target": "project-overview | features/<slug> | integrations",
   "round": 1,
   "status": "issues_found | passed",
   "issues": [
@@ -262,7 +262,7 @@ if round > 5 and 仍有 blocking issues:
 - [ ] `module_landscape` 三层字段齐全且 ≥ 下限
 - [ ] 无 confirmed 条目缺少合格 refs
 
-**features/<名>：**
+**features/<slug>：**
 
 - [ ] scenarios / problems_solved 条数与深度
 - [ ] 每个 sub_feature narrative ≥ 80 字且有 boundary_with_parent
@@ -297,7 +297,7 @@ if round > 5 and 仍有 blocking issues:
 
 - 读取 `project-overview.json` 时渲染 NarrativeBlock 为 markdown 小节（非 bullet 一句话）。
 - 插入 overview §6 自 `module_landscape`。
-- 读取 `quality-review/*-final.json`（若存在）在 §9 综合说明中列出 `unresolved_issues`。
+- 读取 `quality-review/**/*-final.json`（若存在）在 §9 综合说明中列出 `unresolved_issues`。
 - **仍禁止**补造 confirmed 内容；缺字段仍写「未能从中间产物确认」。
 
 ### 7.5 `skills/analyze-codebase/SKILL.md` 编排
@@ -311,7 +311,7 @@ if round > 5 and 仍有 blocking issues:
 在阶段 4 每个 digger 返回后插入：
 
 ```text
-质审循环(features/<名>) → 不通过则回灌同一 digger 修订
+质审循环(features/<slug>) → 不通过则回灌同一 digger 修订
 ```
 
 在阶段 5 写入 `integrations.json` 后、`report-writer` 前插入：
@@ -330,17 +330,19 @@ if round > 5 and 仍有 blocking issues:
 │   ├── project-overview-round-1.json
 │   ├── project-overview-final.json          # 仅 max_rounds 或汇总时
 │   ├── features/
-│   │   └── <名>-round-1.json
+│   │   └── <slug>-round-1.json
+│   │   └── <slug>-final.json
 │   └── integrations-round-1.json
 ├── project-overview.json                    # v7 schema
 └── overview.md                              # §6 模块关系；§9 含 unresolved
 ```
 
-## 9. 红线扩展（R9–R11）
+## 9. 红线扩展（R9–R12）
 
 - **R9（叙事 tier 诚实）**：禁止把无 refs 的推断标为 `confirmed`；`industry_context` 不得进入 `problems_solved` 主列表（仅 `industry_context_notes`）。
 - **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（名称、顺序、条数）。
-- **R11（质审轮次）**：每个 target 的 challenger 调用链 `round` **≤ 5**；第 5 轮后必须写 `max_rounds_reached` 并继续流水线（不阻塞用户拿到报告）。
+- **R11（质审轮次）**：每个 target 的 challenger 调用链 `round` **≤ 5**；第 5 轮仍有 blocking/major 时由 **challenger** 写 `*-final.json`（`max_rounds_reached`）并继续流水线。
+- **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 必须为英文 kebab-case 路径；禁止用中文 `name` 作文件名。
 
 ## 10. 对主规格文档的合并指引
 
@@ -363,6 +365,6 @@ if round > 5 and 仍有 blocking issues:
 
 1. 跑完 analyze-codebase 后，`project-overview.json` 含 `module_landscape` 且 `problems_solved` 为 NarrativeBlock 数组。
 2. `overview.md` 存在 §6 双层模块说明，§3 痛点为段落级而非单句。
-3. 任意 `features/<名>.md` 的「应用场景」「痛点」「二级功能」均为多段落 + 证据标注。
+3. 任意 `features/<slug>.md` 的「应用场景」「痛点」「二级功能」均为多段落 + 证据标注。
 4. `quality-review/` 存在至少 project-overview 与每个 feature 的 round 记录；人工可追踪 5 轮内回灌历史。
 5. 无 confirmed 条目 refs 为空；industry_context 条数不超过上限。

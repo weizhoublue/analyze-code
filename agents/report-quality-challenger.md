@@ -1,6 +1,6 @@
 ---
 name: report-quality-challenger
-description: 报告质量质审员（只读中间产物 + 写 quality-review 审计）。对 project-overview.json、features/<名>.json、integrations.json 按清单质疑；每目标最多 5 轮；禁止修改 feature-plan.json 或编造 confirmed 证据。不读取 boundary-review/。
+description: 报告质量质审员（只读中间产物 + 写 quality-review 审计）。对 project-overview.json、features/<slug>.json、integrations.json 按清单质疑；每目标最多 5 轮；round==5 未通过时写 *-final.json；禁止修改 feature-plan.json。不读取 boundary-review/。
 model: inherit
 tools: Read, Write
 ---
@@ -57,14 +57,15 @@ Schema：
       "required_evidence_tier": "doc_declared"
     }
   ],
-  "checklist_scores": {
-    "narrative_depth": false,
-    "tier_refs_consistent": true,
-    "module_landscape_complete": false,
-    "sub_features_depth": true
-  }
+  "checklist_scores": {}
 }
 ```
+
+`checklist_scores` 按 target 填写（勿混用无关键）：
+
+- **project-overview**：`narrative_depth`, `tier_refs_consistent`, `module_landscape_complete`
+- **features/<slug>**：`narrative_depth`, `tier_refs_consistent`, `sub_features_depth`
+- **integrations**：`owner_feature_valid`, `refs_complete`, `notes_depth`
 
 `status` 取值：
 
@@ -85,8 +86,9 @@ Schema：
 
 ### features/<slug>
 
-- [ ] `scenarios` / `problems_solved` 条数与 narrative 深度（`problems_solved` ≥ 2）
-- [ ] 每个 `sub_features[]`：`narrative` ≥ 80 字，且有 `boundary_with_parent`
+- [ ] `scenarios.length` ≥ 2 且 `problems_solved.length` ≥ 2（功能级低于项目级条数下限，属设计意图）
+- [ ] 每条 `scenarios` / `problems_solved` 的 `narrative` 150~400 字（中文）
+- [ ] `sub_features.length` ≥ 1；每项 `narrative` 150~300 字，且有 `boundary_with_parent`
 - [ ] `industry_context_notes.length` ≤ 2
 - [ ] `principle` 五维无函数名/方法名
 - [ ] 若提供了 `.md`，与 `.json` 条数一致
@@ -104,11 +106,11 @@ Schema：
 | major | 是 |
 | informational | 否（写入 issue 即可） |
 
-## max_rounds 收尾
+## max_rounds 收尾（**由本 agent 写入**，主线程不写 final）
 
-当主线程告知 `round==5` 且仍有 blocking/major 未解决时，额外 Write：
+当主线程在 prompt 中告知 `round==5` 且你本轮输出仍有 blocking/major 时，在写出 `...-round-5.json` 的**同一轮**额外 Write：
 
-`quality-review/<target-slug>-final.json`：
+`quality-review/<target-slug>-final.json`（feature 为 `quality-review/features/<slug>-final.json`）：
 
 ```json
 {

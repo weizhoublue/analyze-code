@@ -68,12 +68,14 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 5. 代码有实现但无入口 → 标记「内部能力或未暴露能力」
 6. 文档有功能但代码无实现 → 标记「文档声明但未确认实现」
 
-**v7 扩展红线（R9–R11，委派相关 agent 时一并复述）：**
+**扩展红线（R7–R12，委派相关 agent 时按需复述）：**
 
+- **R7（reviewer 中立判定）**：`feature-boundary-reviewer` 不得因 `origin` 非 `scout-initial` 而调整 `decision`；`prev_reviews` 仅供稳定性比对，**不作为判定来源**。
+- **R8（scout 窄扫三态）**：`project-scout (mode: targeted)` 必须返回 `found` / `duplicate` / `not_found`；预算耗尽未命中**必须** `not_found`。
 - **R9（叙事 tier 诚实）**：禁止把无 refs 的推断标为 `confirmed`；`industry_context` 不得进入 `problems_solved` / `scenarios` 主列表（仅 `industry_context_notes`）。
 - **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（`name`、`slug`、顺序、条数）。
+- **R11（质审轮次）**：每个质审 target 的 challenger 调用 **≤ 5 轮**；第 5 轮后若仍有 blocking/major，由 **challenger** 写 `*-final.json`（`max_rounds_reached`）并**继续**流水线（不阻塞出报告）。
 - **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 的文件名必须为英文 kebab-case（`slug`）；禁止以中文 `name` 作为磁盘文件名。
-- **R11（质审轮次）**：每个质审 target 的 challenger 调用 **≤ 5 轮**；第 5 轮后若仍有 blocking/major，写 `max_rounds_reached` 并**继续**流水线（不阻塞出报告）。
 
 ## 工作流（严格顺序执行）
 
@@ -101,14 +103,15 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 ```text
 target ← "project-overview"
 round ← 1
+prior_issues ← null
 while round ≤ 5:
-    委派 report-quality-challenger(target, round, prior_issues?)
+    委派 report-quality-challenger(target, round, prior_issues)
     若 status == passed: break
     若 round == 5 且仍有 blocking/major:
-        写 quality-review/project-overview-final.json (max_rounds_reached)
+        在 prompt 中告知 challenger round==5；由 challenger Write quality-review/project-overview-final.json
         break
-    将 issues 中 blocking/major 整理为修订清单，回灌 project-scout：
-      「仅修订 Part 1 JSON，保持 Part 2 候选清单不变」
+    prior_issues ← 本轮 challenger 返回的 issues[]（仅 blocking/major）
+    将 prior_issues 整理为修订清单，回灌 project-scout：「仅修订 Part 1 JSON，保持 Part 2 候选清单不变」
     主线程用 scout 返回的 Part 1 **覆盖写入** project-overview.json
     round ← round + 1
 ```
@@ -191,118 +194,75 @@ while round ≤ 5:
 candidates ← 阶段 1 的 Part 2 候选清单                # 每条 origin = "scout-initial"
 reviews    ← 阶段 2 的 reviews                         # 初审结果
 round      ← 0
-parse_fail_streak ← 0                                 # 连续自然语言解析失败计数
-# next_id(): 维护跨轮单调递增的计数器；初值 = 阶段 1 scout 输出的 max(id) + 1；
-#            每次调用返回当前值后自增；exclude/split/merge 不回收已分配的 id。
-# used_slugs ← 空集合（跟踪已占用 slug，供 assign_slug 去重）
-# assign_slug(name, code_paths, doc_paths, id):
-#   1) 从 code_paths / doc_paths 提取英文标识（CLI 子命令、CRD kind、API 路径段）→ kebab-case
-#   2) 若无，将 name 译为简短英文或拼音音节（勿用中文）→ kebab-case
-#   3) 仍无则 feature-{id}
-#   4) 若与 used_slugs 冲突，追加 -2、-3 … 直至唯一；加入 used_slugs
+parse_fail_streak ← 0
+next_id_counter ← max(candidates[].id) + 1            # next_id() 初值
+used_slugs ← ∅                                        # 循环内 add/split 预分配 slug 时占用；exclude 不释放
+summary ← {added:[], split:[], merged:[], renamed:[], excluded_ids:[]}
+
+# next_id(): 返回 next_id_counter 后自增；id 不回收
+# assign_slug(name, code_paths, doc_paths, id): 见上文；结果加入 used_slugs
+
+# 同轮多动作顺序（固定）：add → split → merge → rename → exclude
+# 同批 merge+exclude 同一 id：先 merge 再 exclude（exclude 作用于 merge 后清单）
 
 while True:
-    # 展示
-    向用户展示候选 markdown 表（id | name | summary | reviews[id].decision | reviews[id].reason）+ §3.1 提示词
-    # 注：feature-boundary-reviewer 的 Part 2 markdown 已经给出表格，主线程直接转贴 + 追加 §3.1 提示词即可，不要重新构造一份。
+    向用户展示候选表 + §3.1 提示词
 
     raw ← 读取用户输入
     if raw ∈ {done, ok, ""}:
+        if count(reviews[id].decision == "keep") == 0:
+            提示「最终清单为空…」；continue
+        non_keep ← count(reviews[id].decision != "keep")
+        if non_keep > 0:
+            提示「已忽略 {non_keep} 项（不进 feature-plan，见 final.json）」
         break
 
-    # 归一化
     actions ← parse_natural_language(raw)
     if 解析失败 or 有歧义:
         parse_fail_streak ← parse_fail_streak + 1
         if parse_fail_streak >= 3:
-            兜底：贴回 §3.1 提示词与字面切分展示，提示用户照示例重输；parse_fail_streak ← 0
+            兜底贴回 §3.1；parse_fail_streak ← 0
         else:
-            反问用户具体指哪一项
-        不计入 round；continue
-    parse_fail_streak ← 0                             # 解析成功，重置兜底计数
+            反问用户
+        continue
+    parse_fail_streak ← 0
 
-    向用户复述 actions（编号化中文 + op 标记），等用户回 yes / 修改这一条 / 重输
+    向用户复述 actions，等 yes / 修改这一条 / 重输
     if 用户回 "修改这一条" or "重输":
-        不计入 round；continue
+        continue
+    if 用户回 ≠ "yes"（大小写不敏感）:
+        反问「请回复 yes 执行，或 修改这一条 / 重输」；continue
 
     round ← round + 1
-
-    # 4a) add → project-scout 窄扫
     scout_supplements ← []
+
     for a in actions where op == "add":
-        result ← 委派 project-scout(
-            mode: "targeted",
-            query: {name: a.name, hints: a.hints},
-            existing_candidates_summary: candidates 的 id+name+code_paths+doc_paths
-        )
-        scout_supplements.append({query: a.name, result: result})
-        if result.result == "found":
-            new_id ← next_id()
-            candidates.append({...result.candidate, id: new_id,
-                               slug: assign_slug(result.candidate.name, ...),
-                               origin: f"user-added@round-{round}"})
-        elif result.result == "duplicate":
-            提示用户「与第 result.duplicate_of 项实质相同，未重复添加」
-        else:  # not_found
-            提示用户「未找到 a.name 的证据，已跳过；可换 CLI/CRD/配置项名重试」
-
-    # 4b) split → 主线程内拆分（子项继承父项 evidence_samples）
+        ...（同前；found 时 assign_slug 并 summary.added.append）
     for s in actions where op == "split":
-        parent ← candidates.find(s.id)
-        for sub_name in s.into:
-            new_id ← next_id()
-            candidates.append({
-                id: new_id, name: sub_name,
-                slug: assign_slug(sub_name, parent.code_paths, parent.doc_paths, new_id),
-                summary: parent.summary, exposure: parent.exposure,
-                code_paths: parent.code_paths, doc_paths: parent.doc_paths,
-                evidence_samples: parent.evidence_samples,
-                origin: f"user-split-from-{parent.id}@round-{round}"
-            })
-        candidates.remove(parent)
+        ...（同前；summary.split.append）
+    for m in actions where op == "merge":
+        目标 id ← min(m.ids)；合并 paths/samples/exposure 到目标；目标 origin/slug 不变；移除其它 id；summary.merged.append
+    for r in actions where op == "rename":
+        改 candidates[r.id].name；summary.renamed.append
+    for e in actions where op == "exclude":
+        移除 ids；summary.excluded_ids.extend(e.ids)
 
-    # 4c) merge / rename / exclude → 主线程内存处理；origin 不变
-    apply_merge(candidates, actions)     # 目标项保留 origin；其它成员被移除
-    apply_rename(candidates, actions)    # 仅改 name；origin 不变
-    apply_exclude(candidates, actions)   # 直接移除
+    prev_reviews ← reviews
+    reviews ← 委派 feature-boundary-reviewer(candidates, prev_reviews)
+    # 若 reviewer 对用户 add 项建议 exclude：下轮展示时高亮该 id 的 review.reason
 
-    # 5) 整张新清单 → reviewer 全量重审
-    prev_reviews ← reviews                                   # 供稳定性比对偏好
-    reviews ← 委派 feature-boundary-reviewer(
-        candidates: 全量,
-        prev_reviews: prev_reviews
-    )
-
-    # 6) 写本轮审计
     write_json("./analysis-report/boundary-review/round-{round}.json", {
-        "round": round,
-        "user_raw_input": raw,
-        "parsed_actions": actions,
+        "round": round, "user_raw_input": raw, "parsed_actions": actions,
         "scout_supplements": scout_supplements,
-        "candidates_after_round": candidates,
-        "reviews_after_round": reviews,
-        "warnings": []
+        "candidates_after_round": candidates, "reviews_after_round": reviews, "warnings": []
     })
-
-    # 7) 软上限提醒
     if round >= 3:
-        提示用户「已迭代 {round} 轮，建议尽快 done」
-
-# 循环结束 → 落最终态
-if 候选中 reviews[id].decision == "keep" 的项数 == 0:
-    拒绝 done，回到展示循环，提示用户「最终清单为空，无法进入深挖。请 add 至少一项或撤回 exclude 后再确认」
-    继续循环
+        提示「已迭代 {round} 轮，建议尽快 done」
 
 write_json("./analysis-report/boundary-review/final.json", {
     "candidates": candidates,
     "reviews":    reviews,
-    "user_decision_summary": {
-        "added":   [...],
-        "split":   [...],
-        "merged":  [...],
-        "renamed": [...],
-        "excluded_ids": [...]
-    },
+    "user_decision_summary": summary,
     "rounds_index": ["round-1", "round-2", ...]
 })
 
@@ -358,9 +318,12 @@ write_json("./analysis-report/feature-plan.json", {
 ├── integrations.json
 ├── quality-review/
 │   ├── project-overview-round-1.json
+│   ├── project-overview-final.json      # max_rounds 时由 challenger 写入
+│   ├── integrations-round-1.json
+│   ├── integrations-final.json
 │   ├── features/
-│   │   └── <slug>-round-1.json
-│   └── integrations-round-1.json
+│   │   ├── <slug>-round-1.json
+│   │   └── <slug>-final.json
 ├── features/
 │   ├── <slug>.md                # 一级功能报告（文件名必须英文）
 │   └── <slug>.json
@@ -433,12 +396,14 @@ write_json("./analysis-report/feature-plan.json", {
 ```text
 target ← "features/<slug>"
 round ← 1
+prior_issues ← null
 while round ≤ 5:
-    委派 report-quality-challenger(target, round)
+    委派 report-quality-challenger(target, round, prior_issues)
     若 status == passed: break
     若 round == 5 且有 blocking/major:
-        写 quality-review/features/<名>-final.json；break
-    回灌 feature-digger：附带 issues + 原 feature-plan 单条记录，只修订 features/<slug>.{json,md}
+        告知 challenger round==5；由 challenger Write quality-review/features/<slug>-final.json；break
+    prior_issues ← 本轮 issues[]（blocking/major）
+    回灌 feature-digger：附带 prior_issues + feature-plan 单条，只修订 features/<slug>.{json,md}
     round ← round + 1
 ```
 
@@ -457,12 +422,14 @@ while round ≤ 5:
 ```text
 target ← "integrations"
 round ← 1
+prior_issues ← null
 while round ≤ 5:
-    委派 report-quality-challenger(target, round)
+    委派 report-quality-challenger(target, round, prior_issues)
     若 status == passed: break
     若 round == 5 且有 blocking/major:
-        写 quality-review/integrations-final.json；break
-    回灌 integration-analyst：附带 issues，只修订 integrations.json
+        告知 challenger round==5；由 challenger Write quality-review/integrations-final.json；break
+    prior_issues ← 本轮 issues[]（blocking/major）
+    回灌 integration-analyst：附带 prior_issues，只修订 integrations.json
     round ← round + 1
 ```
 
@@ -470,7 +437,7 @@ while round ≤ 5:
 
 委派 `report-writer`：
 
-- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`；若存在则读取 `quality-review/*-final.json` 以在 overview §9 列出 unresolved。
+- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`；Glob + Read 存在的 `quality-review/**/*-final.json` 以在 overview §9 列出 unresolved（含 `quality-review/features/<slug>-final.json`）。
 - **不得新增、删除、合并、拆分、重命名一级功能**：overview 的一级功能清单**严格来自** `feature-plan.json`，名称、顺序一致。
 - 缺失或质量不足的 feature → 标注「未能从中间产物确认」，禁止补造。
 - 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<slug>.md`（展示文本用 `name`）。
@@ -482,4 +449,4 @@ while round ≤ 5:
 - 一级功能总数（与 `feature-plan.json` 一致）
 - 写入产物路径（`./analysis-report/`）
 - 冲突 / 未确认项总数
-- 质审未闭合项（来自 `quality-review/*-final.json`，若有）
+- 质审未闭合项（来自 `quality-review/**/*-final.json`，若有）

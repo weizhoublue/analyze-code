@@ -21,7 +21,7 @@ tools: Read, Grep, Glob, Bash, Write
 ## 必读输入
 
 - `./analysis-report/feature-plan.json`（最终功能清单，**所有 feature-level 集成的 owner_feature 必须命中此清单中的 name**）。
-- `./analysis-report/features/*.json`（每个一级功能的中间产物，集成线索可能已在 `external_interactions` / `sub_features` / `exposure` 中提及）。
+- `./analysis-report/features/*.json`（每个一级功能的中间产物；集成线索可能在 `principle.external_interactions`、`sub_features`、`exposure` 中）。
 
 仅以这两类文件为分析基底，再以文档与代码补证。
 
