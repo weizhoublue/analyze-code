@@ -24,7 +24,7 @@ tools: Read, Write
 
 - **不得新增、删除、合并、拆分、重命名一级功能**。
 - `overview.md` 的「一级功能」清单必须**严格来自** `feature-plan.json`，**名称、顺序保持一致**。
-- 若某个 feature 的 `features/<名>.json` 满足以下任一条件，视为「缺失」，**只能标注「未能从中间产物确认」**，禁止自行补造场景、优缺点、原理、性能、二级功能等内容：
+- 若某个 feature 的 `features/<slug>.json`（`slug` 来自 `feature-plan.json` 该条）满足以下任一条件，视为「缺失」，**只能标注「未能从中间产物确认」**，禁止自行补造场景、优缺点、原理、性能、二级功能等内容：
   - 文件不存在；
   - `principle.summary` 为空字符串且 `scenarios` 长度为 0；
   - `principle` 五维字段（`activation_flow` / `processing_stages` / `state_changes` / `external_interactions` / `user_outcomes`）全部为空数组；
@@ -60,11 +60,11 @@ tools: Read, Write
 ## 工作步骤
 
 1. `Read ./analysis-report/project-overview.json` → 抽取 `main_language` / `runtime_platforms` / `overall_responsibility`，填入 §1；用 NarrativeBlock 规则渲染 `scenarios` → §2、`problems_solved` + `industry_context_notes` → §3；`pros` / `cons` → §4 / §5；`module_landscape` → §6（见模板）。`architecture_summary` 可写在 §1 总体职责段落后一句补充。若字段缺失，写「未能从中间产物确认」，禁止补造。
-2. `Read ./analysis-report/feature-plan.json` → 抽取 `features[].name`，按数组顺序作为 overview 中一级功能的**最终顺序**。
-3. 对每个 `name`，尝试 `Read ./analysis-report/features/<name>.json`：
+2. `Read ./analysis-report/feature-plan.json` → 对每条 `features[]` 取 `name`（展示）与 `slug`（路径），按数组顺序作为 overview 一级功能顺序。
+3. 对每个条目，尝试 `Read ./analysis-report/features/<slug>.json`（**禁止**用 `name` 拼路径）：
+   - 列表行展示 **`name`**；链接目标为 `[features/<slug>.md](./features/<slug>.md)`。
    - 摘要取值依次回退：`principle.summary` → `scenarios[0].title` → `scenarios[0].narrative` 前 60 字 → 「未能从中间产物确认」。
-   - 若文件存在且摘要可取，用其填 overview 中该功能的一句话摘要。
-   - 若文件缺失或满足下方「视为缺失」定义 → 在该功能的摘要行写「**未能从中间产物确认**」。
+   - 若文件缺失或满足「视为缺失」定义 → 摘要行写「**未能从中间产物确认**」。
 4. `Read ./analysis-report/integrations.json` → 写 §8「集成能力」，分 `project-level` 与 `feature-level`（feature-level 按所属功能聚合，与一级功能顺序一致）。
 5. Glob + Read 存在的 `quality-review/*-final.json` → 将 `unresolved_issues` 摘要写入 §9。
 6. **写入** `./analysis-report/overview.md`（结构见下）。
@@ -112,10 +112,10 @@ tools: Read, Write
 
 > 名称与顺序严格来自 `feature-plan.json`，本节不引入新功能、不重命名。
 
-1. **<feature 1 name>** — <一句话摘要；如缺失则写「未能从中间产物确认」>
-   - 详情：[features/<feature 1 name>.md](./features/<feature 1 name>.md)
-2. **<feature 2 name>** — ...
-   - 详情：[features/<feature 2 name>.md](./features/<feature 2 name>.md)
+1. **<features[0].name>** — <一句话摘要；如缺失则写「未能从中间产物确认」>
+   - 详情：[features/<features[0].slug>.md](./features/<features[0].slug>.md)
+2. **<features[1].name>** — ...
+   - 详情：[features/<features[1].slug>.md](./features/<features[1].slug>.md)
 ...
 
 ## 8. 集成能力

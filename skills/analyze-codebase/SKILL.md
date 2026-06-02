@@ -9,7 +9,32 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 ## 适用范围
 
 - 输入：当前工作目录下的开源项目源码（含 `docs/`、README、wiki、模块内 README、代码注释/docstring 等文档源）。
-- 输出：在被分析项目目录下生成 `./analysis-report/` 中的多份产物。
+- 输出：在**当前工作目录**下新建并写入 `./analysis-report/`（见下节）。
+
+## 产物路径与文件命名（强约束）
+
+**根目录（默认）**：相对于**当前工作目录**（运行本 skill 时 Claude Code 的 cwd，即被分析项目根目录）：
+
+```text
+./analysis-report/
+```
+
+主线程与各 agent **不得**把报告写到仓库外或其它自定义路径，除非用户在对话中**显式**指定了替代根路径（未指定时一律用 `./analysis-report/`）。
+
+**人类可读的 Markdown 报告文件名必须为英文**（小写 ASCII + 连字符，kebab-case）：
+
+| 文件 | 文件名 | 说明 |
+| --- | --- | --- |
+| 总体报告 | `overview.md` | 固定英文名 |
+| 一级功能报告 | `features/<slug>.md` | `<slug>` 来自 `feature-plan.json`，**禁止**用中文 `name` 作文件名 |
+| （非 markdown 的中间产物） | `*.json` 等 | 见 §3.8 / 主 spec §6；JSON 文件名已为英文 |
+
+**`slug` 与 `name` 分工**：
+
+- `name`：业务展示名（可为中文），用于报告正文标题、overview 一级功能列表、integrations 的 `owner_feature`。
+- `slug`：仅用于磁盘路径与质审 target 路径（`features/<slug>.*`、`quality-review/features/<slug>-*`）；须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$`，长度 ≤ 64，在 `feature-plan.json` 内**唯一**。
+
+**主线程在写入 `feature-plan.json` 时为每条 keep 项分配 `slug`**（`assign_slug`，见 §3.5）。`rename` **只改** `name`，**不改** `slug`（避免已生成文件路径漂移）；`merge` 目标项**保留**其 `slug`；`split` / `add` 产生的新项**新分配** `slug`。
 
 ## 全局约束（必须在每次委派 agent 时在 prompt 里复述）
 
@@ -46,7 +71,8 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 **v7 扩展红线（R9–R11，委派相关 agent 时一并复述）：**
 
 - **R9（叙事 tier 诚实）**：禁止把无 refs 的推断标为 `confirmed`；`industry_context` 不得进入 `problems_solved` / `scenarios` 主列表（仅 `industry_context_notes`）。
-- **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（名称、顺序、条数）。
+- **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（`name`、`slug`、顺序、条数）。
+- **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 的文件名必须为英文 kebab-case（`slug`）；禁止以中文 `name` 作为磁盘文件名。
 - **R11（质审轮次）**：每个质审 target 的 challenger 调用 **≤ 5 轮**；第 5 轮后若仍有 blocking/major，写 `max_rounds_reached` 并**继续**流水线（不阻塞出报告）。
 
 ## 工作流（严格顺序执行）
@@ -143,10 +169,12 @@ while round ≤ 5:
 **`merge` / `rename` / `exclude` 不改变 `origin`**：
 
 - `merge`：合并的**目标 id** = `min(action.ids)`；目标 `name` ← `action.name`；`evidence_samples` / `code_paths` / `doc_paths` / `exposure` 在主线程内做**集合并去重**；目标 `origin` 不变；其它 id 从 candidates 移除（保留编号写入 `user_decision_summary.merged[].ids` 供审计）。
-- `rename`：只改 `name`，`origin` 不动。
+- `rename`：只改 `name`，`origin` 与 **`slug`（若已存在）** 不动。
 - `exclude`：直接从 candidates 移除；编号写入 `user_decision_summary.excluded_ids` 供审计。**不进入** `final.json.candidates`（与 §3.5 伪代码 `apply_exclude` 行为一致）。
 
 `origin` 仅用于审计与下游 digger 报告引用，**禁止**进入 reviewer 判定（见 `agents/feature-boundary-reviewer.md` 红线 7）。
+
+**`slug`（v7.1）**：人工确认阶段 candidates **可不**带 `slug`；在生成 `feature-plan.json` 时由主线程统一赋值。若某条在循环中已临时带有 `slug`（例如上轮 split 子项），`merge` 到目标项时**保留目标的 slug**，被合并项的 slug 废弃。
 
 #### 3.4 reviewer 重审输入契约
 
@@ -166,6 +194,12 @@ round      ← 0
 parse_fail_streak ← 0                                 # 连续自然语言解析失败计数
 # next_id(): 维护跨轮单调递增的计数器；初值 = 阶段 1 scout 输出的 max(id) + 1；
 #            每次调用返回当前值后自增；exclude/split/merge 不回收已分配的 id。
+# used_slugs ← 空集合（跟踪已占用 slug，供 assign_slug 去重）
+# assign_slug(name, code_paths, doc_paths, id):
+#   1) 从 code_paths / doc_paths 提取英文标识（CLI 子命令、CRD kind、API 路径段）→ kebab-case
+#   2) 若无，将 name 译为简短英文或拼音音节（勿用中文）→ kebab-case
+#   3) 仍无则 feature-{id}
+#   4) 若与 used_slugs 冲突，追加 -2、-3 … 直至唯一；加入 used_slugs
 
 while True:
     # 展示
@@ -203,7 +237,9 @@ while True:
         )
         scout_supplements.append({query: a.name, result: result})
         if result.result == "found":
-            candidates.append({...result.candidate, id: next_id(),
+            new_id ← next_id()
+            candidates.append({...result.candidate, id: new_id,
+                               slug: assign_slug(result.candidate.name, ...),
                                origin: f"user-added@round-{round}"})
         elif result.result == "duplicate":
             提示用户「与第 result.duplicate_of 项实质相同，未重复添加」
@@ -214,8 +250,10 @@ while True:
     for s in actions where op == "split":
         parent ← candidates.find(s.id)
         for sub_name in s.into:
+            new_id ← next_id()
             candidates.append({
-                id: next_id(), name: sub_name,
+                id: new_id, name: sub_name,
+                slug: assign_slug(sub_name, parent.code_paths, parent.doc_paths, new_id),
                 summary: parent.summary, exposure: parent.exposure,
                 code_paths: parent.code_paths, doc_paths: parent.doc_paths,
                 evidence_samples: parent.evidence_samples,
@@ -270,8 +308,9 @@ write_json("./analysis-report/boundary-review/final.json", {
 
 write_json("./analysis-report/feature-plan.json", {
     "features": [仅 reviews[id].decision == "keep" 的最终条目；
-                 扁平字段（name / exposure / code_paths / doc_paths /
+                 扁平字段（name / slug / exposure / code_paths / doc_paths /
                  evidence_samples / notes / origin）]
+                 # slug：若 candidate 尚无 slug，此处 assign_slug；已有则原样写入
 })
 ```
 
@@ -309,10 +348,22 @@ write_json("./analysis-report/feature-plan.json", {
 
 #### 3.8 产物文件
 
-写入路径（在被分析项目目录下）：
+写入路径（**当前工作目录**下，默认 `./analysis-report/`）：
 
 ```text
 ./analysis-report/
+├── overview.md                  # 总体报告（固定英文名）
+├── project-overview.json
+├── feature-plan.json            # 含每条 features[].slug（英文路径键）
+├── integrations.json
+├── quality-review/
+│   ├── project-overview-round-1.json
+│   ├── features/
+│   │   └── <slug>-round-1.json
+│   └── integrations-round-1.json
+├── features/
+│   ├── <slug>.md                # 一级功能报告（文件名必须英文）
+│   └── <slug>.json
 └── boundary-review/
     ├── round-1.json
     ├── round-2.json
@@ -366,7 +417,7 @@ write_json("./analysis-report/feature-plan.json", {
 }
 ```
 
-**`feature-plan.json`** 仅在 `done` 之后写入一次。每条 feature 是扁平字段集合：`name` / `exposure` / `code_paths` / `doc_paths` / `evidence_samples` / `notes`（可选）/ `origin`（v6 新增可选；透传给 `feature-digger`）。
+**`feature-plan.json`** 仅在 `done` 之后写入一次。每条 feature 是扁平字段集合：`name`（展示名，可中文）/ `slug`（英文 kebab-case，**必填**，用于 `features/<slug>.*` 路径）/ `exposure` / `code_paths` / `doc_paths` / `evidence_samples` / `notes`（可选）/ `origin`（可选；透传）。
 
 ### 阶段 4：深挖（feature-digger × N，相互独立，可并行调用）
 
@@ -374,20 +425,20 @@ write_json("./analysis-report/feature-plan.json", {
 
 - 输入：该 feature 的单条记录（**不要传 `boundary-review/` 下的任何审计文件**）。
 - 要求其严格执行五维深挖（启用方式 / 主要处理阶段 / 状态变化 / 外部交互 / 最终结果），不追函数级调用链。
-- 产出：`./analysis-report/features/<功能名>.md` + `./analysis-report/features/<功能名>.json`。
+- 产出：`./analysis-report/features/<slug>.md` + `./analysis-report/features/<slug>.json`（`slug` 来自 feature-plan 该条记录；正文标题仍用 `name`）。
 - 仅向你回传精简摘要（功能名、写入路径、置信度、冲突数、未确认项数）。
 
 **每个 feature 收到 digger 摘要后**，在启动下一个 digger 之前（并行时可在该 feature 完成后立即执行）：
 
 ```text
-target ← "features/<功能名>"
+target ← "features/<slug>"
 round ← 1
 while round ≤ 5:
     委派 report-quality-challenger(target, round)
     若 status == passed: break
     若 round == 5 且有 blocking/major:
         写 quality-review/features/<名>-final.json；break
-    回灌 feature-digger：附带 issues + 原 feature-plan 单条记录，只修订 features/<名>.{json,md}
+    回灌 feature-digger：附带 issues + 原 feature-plan 单条记录，只修订 features/<slug>.{json,md}
     round ← round + 1
 ```
 
@@ -422,7 +473,7 @@ while round ≤ 5:
 - 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`；若存在则读取 `quality-review/*-final.json` 以在 overview §9 列出 unresolved。
 - **不得新增、删除、合并、拆分、重命名一级功能**：overview 的一级功能清单**严格来自** `feature-plan.json`，名称、顺序一致。
 - 缺失或质量不足的 feature → 标注「未能从中间产物确认」，禁止补造。
-- 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<功能名>.md`。
+- 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<slug>.md`（展示文本用 `name`）。
 
 ## 完成后
 

@@ -22,14 +22,14 @@ tools: Read, Write
 | target | 读取路径 |
 | --- | --- |
 | `project-overview` | `./analysis-report/project-overview.json` |
-| `features/<名>` | `./analysis-report/features/<名>.json` + 可选 `./analysis-report/features/<名>.md` |
+| `features/<slug>` | `./analysis-report/features/<slug>.json` + 可选 `./analysis-report/features/<slug>.md`（`slug` 为英文 kebab-case） |
 | `integrations` | `./analysis-report/integrations.json` + `./analysis-report/feature-plan.json`（只读校验 owner_feature） |
 
 **`Write` 仅允许：** `./analysis-report/quality-review/**`
 
 ## 主线程传入（每轮）
 
-- `target`: `project-overview` | `features/<功能名>` | `integrations`
+- `target`: `project-overview` | `features/<slug>` | `integrations`
 - `round`: 整数，从 1 开始
 - `prior_issues`（可选）：上一轮你输出的 `issues[]`，供对照是否已修复
 
@@ -38,7 +38,7 @@ tools: Read, Write
 路径规则：
 
 - `project-overview` → `quality-review/project-overview-round-<N>.json`
-- `features/<名>` → `quality-review/features/<名>-round-<N>.json`
+- `features/<slug>` → `quality-review/features/<slug>-round-<N>.json`
 - `integrations` → `quality-review/integrations-round-<N>.json`
 
 Schema：
@@ -83,7 +83,7 @@ Schema：
 - [ ] `module_landscape.layer_to_feature_mapping.length` ≥ 1
 - [ ] 凡 `evidence_tier==confirmed` 的 NarrativeBlock：`refs` 非空且含 code/schema 路径
 
-### features/<名>
+### features/<slug>
 
 - [ ] `scenarios` / `problems_solved` 条数与 narrative 深度（`problems_solved` ≥ 2）
 - [ ] 每个 `sub_features[]`：`narrative` ≥ 80 字，且有 `boundary_with_parent`
@@ -118,7 +118,7 @@ Schema：
 }
 ```
 
-`<target-slug>` 规则：`project-overview` | `features/<名>` | `integrations`（与 round 文件前缀一致）。
+`<target-slug>` 规则：`project-overview` | `features/<slug>` | `integrations`（与 round 文件前缀一致；feature 的 `<slug>` 必须英文）。
 
 ## 返回主线程（≤ 6 行）
 

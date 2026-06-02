@@ -79,7 +79,9 @@ tools: Read, Grep, Glob, Bash
 
 向主线程返回一段 markdown，包含两部分：
 
-**Part 1 - 项目级概览**（结构化 JSON；主线程将原样写入 `./analysis-report/project-overview.json`，供 `report-writer` 直接消费 overview.md 的 §1–§5）：
+**Part 1 - 项目级概览**（结构化 JSON；主线程将原样写入**当前工作目录**下 `./analysis-report/project-overview.json`，供 `report-writer` 直接消费 overview.md 的 §1–§5）：
+
+> 一级功能报告的 Markdown 文件名使用英文 `slug`（在人工确认后写入 `feature-plan.json` 时由主线程分配），本阶段 Part 2 候选只需 `name`（可为中文）。
 
 ```json
 {

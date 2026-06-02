@@ -110,8 +110,8 @@ project-scout
    - 产出：启用方式、**NarrativeBlock 级**应用场景/痛点、优点、缺点、五维原理、性能、**加厚**二级功能（`sub_features[].narrative` 150~300 字）。
    - 每个 feature 完成后经 `report-quality-challenger` 质审（≤5 轮/target），issues 回灌 digger 修订。
    - **写两份产物**：
-     - 正式报告：`./analysis-report/features/<功能名>.md`（人类阅读）
-     - 结构化中间产物：`./analysis-report/features/<功能名>.json`（机器消费，供 report-writer 直接读取）
+     - 正式报告：`./analysis-report/features/<slug>.md`（人类阅读；文件名英文）
+     - 结构化中间产物：`./analysis-report/features/<slug>.json`（机器消费，供 report-writer 直接读取）
    - 仅向主线程返回精简摘要（功能名、写入路径、置信度、冲突数、未确认项数）。
 
 5. **集成分析** → 调用 `integration-analyst`（只读 + 写 integrations.json）：
@@ -131,7 +131,7 @@ project-scout
    - **严格禁止新增、删除、合并、拆分、重命名一级功能**：`overview.md` 中的一级功能列表必须**严格来自 `feature-plan.json`**，顺序与命名一致（参见 §7.7）。
    - 若某个 feature 的 `features/<名>.json` 缺失或质量不足，只能标记为「**未能从中间产物确认**」，**不得自行补造**内容。
    - 输出 `./analysis-report/overview.md`（总体报告）。
-   - 在「一级功能」一节链接到对应的 `features/<功能名>.md`。
+   - 在「一级功能」一节用 `name` 展示、链接到 `features/<slug>.md`。
    - 体现「文档描述」与「代码实现」的综合视角，必要时引用冲突记录。
 
 ## 4. Agent 职责与配置
@@ -160,11 +160,11 @@ project-scout
 
 ## 6. 输出成果
 
-在**被分析项目目录**下生成（报告正文为中文）：
+在**当前工作目录**下新建 `./analysis-report/` 并写入产物（默认即被分析项目根目录；报告正文为中文，**Markdown 文件名必须为英文**）：
 
 ```text
 ./analysis-report/
-├── overview.md                # 总体报告
+├── overview.md                # 总体报告（固定英文名）
 ├── project-overview.json      # 项目级概览（v7：NarrativeBlock + module_landscape）；overview §1–§6 数据源
 ├── quality-review/            # v7：质审 round/final 审计
 ├── boundary-review/                       # v6：按轮拆分
@@ -175,10 +175,10 @@ project-scout
 ├── feature-plan.json          # 执行文件：feature-digger 的唯一输入，扁平、不含历史
 ├── integrations.json          # 集成分析中间产物
 └── features/
-    ├── <一级功能A>.md         # 人类阅读报告
-    ├── <一级功能A>.json       # 结构化中间产物
-    ├── <一级功能B>.md
-    └── <一级功能B>.json
+    ├── <slug-a>.md            # 人类阅读报告（文件名英文 kebab-case；正文标题用 name）
+    ├── <slug-a>.json
+    ├── <slug-b>.md
+    └── <slug-b>.json
 ```
 
 ### 6.1 总体报告 `overview.md` 字段
@@ -192,7 +192,9 @@ project-scout
 - 实际部署环境中可与哪些其他项目集成
 - 综合视角说明：体现「文档描述」与「代码实现」的对照；列出存在冲突/未确认的事项
 
-### 6.2 一级功能报告 `features/<功能名>.md` 字段
+### 6.2 一级功能报告 `features/<slug>.md` 字段
+
+> `slug`：英文 kebab-case 文件名键，来自 `feature-plan.json`；`name` 为展示名（可中文），用于报告内 `#` 标题与 overview 列表。
 
 - **启用方式 / 用户入口** [新增]：枚举与说明，至少覆盖以下一种或多种：
   - 用户通过 CLI 参数启用
@@ -270,7 +272,8 @@ project-scout
 {
   "features": [
     {
-      "name": "<最终功能名>",
+      "name": "<最终功能名（展示用，可中文）>",
+      "slug": "<英文 kebab-case，唯一；用于 features/<slug>.* 路径>",
       "exposure": ["cli", "api", "ui", "sdk", "crd", "config", "doc-scenario"],
       "code_paths": ["..."],
       "doc_paths": ["..."],
@@ -289,8 +292,9 @@ project-scout
 - `evidence_samples` 直接复用自 `boundary-review/final.json.candidates[].evidence_samples` 中**保留下来**的样本，避免 digger 再次定位。
 - 该文件由人工确认阶段在主线程生成（Skill 直接写，不交给 agent）。
 - `origin`：v6 新增可选字段；取值与 `boundary-review/final.json` 中一致；**仅审计透传**，`feature-digger` 与 `report-writer` 可忽略。
+- `slug`：主线程在写入本文件时分配（见 `SKILL.md` `assign_slug`）；`rename` 不改 `slug`；`merge` 保留目标项 `slug`。
 
-#### 6.3.3 `features/<功能名>.json`
+#### 6.3.3 `features/<slug>.json`
 
 ```json
 {
@@ -390,6 +394,7 @@ v7 使用 **NarrativeBlock**（见 [`2026-06-02-report-depth-and-quality-agent-d
 - **R9（叙事 tier 诚实）**：禁止无 refs 标 `confirmed`；`industry_context` 仅 `industry_context_notes`。
 - **R10（质审不改清单）**：`report-quality-challenger` 不得改 `feature-plan.json`。
 - **R11（质审轮次）**：每 target ≤5 轮；超限写 `max_rounds_reached` 后继续流水线。
+- **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 必须为英文路径；`slug` 见 `feature-plan.json`，禁止用中文 `name` 作文件名。
 
 ### 7.3 业务功能判定规则 [新增]
 

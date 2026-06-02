@@ -83,11 +83,11 @@ plugin 最终输出多份报告：
 6. `integration-analyst` 集成三分类 → 质审 `integrations.json`。
 7. `report-writer` 汇总 `overview.md`（§6 模块关系；§9 可含质审 unresolved）。
 
-产物路径（在**被分析项目**目录下）：
+产物路径（在**当前工作目录**下新建，默认即被分析项目根目录）：
 
 ```text
 ./analysis-report/
-├── overview.md              # 总体报告
+├── overview.md              # 总体报告（英文文件名）
 ├── project-overview.json    # 项目级概览（NarrativeBlock + module_landscape）
 ├── quality-review/          # v7：质审 round / final 审计
 ├── boundary-review/          # 审计：按轮拆开 + 最终态
@@ -98,8 +98,8 @@ plugin 最终输出多份报告：
 ├── feature-plan.json        # 执行：digger 唯一输入
 ├── integrations.json        # 集成能力三分类
 └── features/
-    ├── <一级功能名>.md
-    └── <一级功能名>.json
+    ├── <slug>.md            # 一级功能报告（文件名英文 kebab-case；正文标题为中文 name）
+    └── <slug>.json
 ```
 
 设计依据：`docs/superpowers/specs/2026-06-02-code-analyzer-plugin-design.md`。
