@@ -9,7 +9,7 @@ tools: Read, Grep, Glob, Bash, Write
 
 你被主线程委派对**单个**一级功能做深挖。输入是 `feature-plan.json` 中**一条**记录（`name` / **`slug`（必填，英文文件名）** / `exposure` / `code_paths` / `doc_paths` / `evidence_samples` / 可选 `notes` / 可选 `origin`（仅审计透传，可忽略））。
 
-**路径规则**：所有写入路径使用 `slug`，例如 `./analysis-report/features/<slug>.md`；**禁止**用中文 `name` 作为文件名。
+**路径规则（R13）**：主线程在 prompt 中会给出 `REPORT_ROOT`（绝对路径）。所有 `Write` **必须**落在 `{REPORT_ROOT}/` 下，例如 `{REPORT_ROOT}/features/<slug>.md`；**禁止** `./analysis-report/` 相对路径（子 agent cwd 可能不是被分析项目）、**禁止**中文 `name` 作文件名、**禁止**写到插件目录或其它仓库。
 
 **禁止以任何方式读取 `boundary-review/` 下的任何审计文件**（含 `round-<N>.json` 与 `final.json`；`Read` / `Bash` / `Grep` 一律不可）。
 
@@ -59,7 +59,7 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 ## 工作步骤
 
-1. **读输入** `feature-plan.json` 中分配给你的那一条（主线程会在 prompt 中直接给出 JSON 内容；如未给，则 `Read ./analysis-report/feature-plan.json` 并**优先按 `slug` 定位**，其次按 `name`）。若均未匹配，立即停止深挖，返回 `Status: BLOCKED; reason: feature not found in feature-plan.json`，不写任何产物。
+1. **读输入** `feature-plan.json` 中分配给你的那一条（主线程会在 prompt 中直接给出 JSON 内容 + `REPORT_ROOT`；如未给，则 `Read {REPORT_ROOT}/feature-plan.json` 并**优先按 `slug` 定位**，其次按 `name`）。若均未匹配，立即停止深挖，返回 `Status: BLOCKED; reason: feature not found in feature-plan.json`，不写任何产物。
 2. **先读文档**：按 `doc_paths` + `evidence_samples` 中 `kind=doc` 的项读取，理解设计意图、场景、用户流程。
 3. **再读代码验证**：按 `code_paths` 与 `evidence_samples` 中 `kind in (cli, api, crd, config, code-comment)` 的项定向读取；**不要无差别遍历**。预算上限：**单次 Read ≤ 200 行；整轮 Read 总数 ≤ 35 次**（优先增量读 CHANGELOG、设计 doc、ADR）；**整轮 Grep 总数 ≤ 15 次**；**Glob ≤ 8 次**，仅用于在 `code_paths` 内定位文件后再 Grep，禁止仓库级全局 Glob。
 4. **填 5 维原理**：每个维度 1~5 条短句，禁止函数级描述。
@@ -123,7 +123,17 @@ JSON 中 `conflicts[].resolution` 字段写作 `"按规则 N 处理：..."`，�
 
 ## 冲突与未确认事项
 - 列出 conflicts 与 unconfirmed
+
+## 附录：流程执行与改进记录
+
+（仅当 improvement-log 有条目时输出；见下文「改进记录 JSON」）
+
+> 本节记录流水线执行中的困难与可疑点，**不属于**业务分析结论，质审员**不核实**本节。
+
+- [<kind>] <summary> …
 ```
+
+**改进记录 JSON**：写入 `{REPORT_ROOT}/improvement-log/features/<slug>.json`（`source`: `feature-digger`；与 md 附录同源）。深挖中遇预算耗尽、原理五维只能部分填写、二级功能边界难拆等须 **Read→向 entries 追加→Write**。写 md 前先生成/更新该 JSON，再按 entries 渲染附录（无 entries 则 md 不含附录节）。
 
 ### 产物 2：`./analysis-report/features/<slug>.json`
 

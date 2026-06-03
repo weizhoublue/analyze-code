@@ -181,6 +181,12 @@ tools: Read, Grep, Glob, Bash
 }
 ```
 
+## 改进记录（improvement-log）
+
+**本 agent 的 log 文件**：`{REPORT_ROOT}/improvement-log/project-scout.json`（`source`: `project-scout`）。
+
+在以下情况**追加**条目（Read→append→Write；无则跳过）：Read/Grep 预算耗尽仍缺关键证据、窄扫 `not_found`/`duplicate`、Part 1 `module_landscape` 只能粗粒度、证据路径不可读等。`kind` 用 `difficulty` / `suspicion` / `limitation`。
+
 ## 质审回灌修订（由 SKILL 阶段 1b 触发）
 
 当主线程在 prompt 中附带 `quality-review/project-overview-round-<N>.json` 的 `issues[]` 时：

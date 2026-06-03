@@ -9,6 +9,10 @@ tools: Read, Grep, Glob, Bash, Write
 
 你的目标：列出**实际部署环境下**该项目可与哪些其他项目/系统集成；并对每条集成能力**严格三分类**。
 
+## 产物根目录（R13）
+
+主线程 prompt **必须**含 `REPORT_ROOT`（绝对路径）。`Read` 仅 `{REPORT_ROOT}/` 下已有中间产物；**唯一**允许 `Write`：`{REPORT_ROOT}/integrations.json`。
+
 ## 硬性红线
 
 1. 禁止把代码目录结构直接等同于业务功能结构。
@@ -93,6 +97,12 @@ tools: Read, Grep, Glob, Bash, Write
 - [ ] 没有把 `internal-dependency` 误写入 `integrations[]`。
 - [ ] 编造的集成已删除；模糊未确认的集成已移到 `unconfirmed[]`。
 - [ ] 没有写出任何函数级调用链或函数名（红线 6）。
+
+## 改进记录（improvement-log）
+
+**本 agent 的 log 文件**：`{REPORT_ROOT}/improvement-log/integration-analyst.json`（`source`: `integration-analyst`）。
+
+`owner_feature` 难对应、内外部依赖难区分、证据不足只能写入 `unconfirmed` 等，**追加**条目。记录出现在 `overview.md` 附录（本 agent 无独立 md 报告）。
 
 ## 质审回灌修订（由 SKILL 阶段 5b 触发）
 

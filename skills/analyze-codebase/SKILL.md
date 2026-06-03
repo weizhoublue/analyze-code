@@ -1,5 +1,5 @@
 ---
-description: 分析当前目录的开源项目，梳理面向用户的业务功能（一级/二级），产出综合分析报告。当用户希望理解一个项目「提供了哪些用户级别的业务能力」、「能与什么集成」、「优缺点」时使用。本 skill 在主线程编排 project-scout / feature-boundary-reviewer / feature-digger / integration-analyst / report-writer / report-quality-challenger 六个 sub-agent，并在功能边界校准后插入多轮人工确认；在阶段 1/4/5 对中间产物做质量质审（每目标 ≤5 轮）。
+description: 分析当前工作目录下的开源项目，产出写入 <cwd>/analysis-report/ 的综合报告（阶段 0 锁定 REPORT_ROOT 绝对路径）。编排六个 sub-agent + 多轮人工确认 + 质审（≤5 轮）。使用前请先 cd 到待分析项目根目录。
 ---
 
 # analyze-codebase
@@ -13,13 +13,16 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 
 ## 产物路径与文件命名（强约束）
 
-**根目录（默认）**：相对于**当前工作目录**（运行本 skill 时 Claude Code 的 cwd，即被分析项目根目录）：
+**根目录变量 `REPORT_ROOT`**（默认 = 被分析项目根目录下的 `analysis-report`）：
 
 ```text
-./analysis-report/
+REPORT_ROOT = <当前工作目录绝对路径>/analysis-report
 ```
 
-主线程与各 agent **不得**把报告写到仓库外或其它自定义路径，除非用户在对话中**显式**指定了替代根路径（未指定时一律用 `./analysis-report/`）。
+- 相对路径 `./analysis-report/` **仅在与阶段 0 确认的 cwd 一致时**有效；子 agent 可能 cwd 不同，故**禁止**只传相对路径。
+- 用户**显式**指定其它目录时，`REPORT_ROOT` = 该绝对路径（须为目录，且在本机可写）。
+- 主线程与各 agent **禁止**写入：`../analysis-report`、插件/marketplace 仓库内的 `analysis-report`、`/tmp`、用户主目录、以及任何不以 `REPORT_ROOT/` 为前缀的路径。
+- 禁止只写 `overview.md` / `features/...` 而不带 `REPORT_ROOT` 前缀（常见误写位置错误）。
 
 **人类可读的 Markdown 报告文件名必须为英文**（小写 ASCII + 连字符，kebab-case）：
 
@@ -76,10 +79,42 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 - **R10（质审不改清单）**：`report-quality-challenger` 不得修改 `feature-plan.json` 的 features 数组（`name`、`slug`、顺序、条数）。
 - **R11（质审轮次）**：每个质审 target 的 challenger 调用 **≤ 5 轮**；第 5 轮后若仍有 blocking/major，由 **challenger** 写 `*-final.json`（`max_rounds_reached`）并**继续**流水线（不阻塞出报告）。
 - **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 的文件名必须为英文 kebab-case（`slug`）；禁止以中文 `name` 作为磁盘文件名。
+- **R13（产物根目录）**：所有中间产物与报告 **必须** 写在 `REPORT_ROOT/` 下；委派 prompt **必须** 附带 `REPORT_ROOT` 的**绝对路径**；禁止写到其它目录。
+- **R14（改进记录免质审）**：各阶段可向 `{REPORT_ROOT}/improvement-log/` 追加执行困难/可疑点；`report-quality-challenger` **不得**据此提出 blocking/major，**不得**要求删除或「证实」这些记录。设计见 [`docs/superpowers/specs/2026-06-02-improvement-log-design.md`](../../docs/superpowers/specs/2026-06-02-improvement-log-design.md)。
+
+## 改进记录（improvement-log）
+
+各 sub-agent 与主线程在遭遇执行摩擦时，向 `{REPORT_ROOT}/improvement-log/` **追加** JSON 条目（schema 见设计 doc §2）。`report-writer` 汇总进 `overview.md` 附录；`feature-digger` 另写入对应 `features/<slug>.md` 文末。
+
+**主线程 `append_improvement_log(file, entry)`**（伪代码）：
+
+```text
+data ← Read file 若存在 else { "source": "orchestrator", "entries": [] }
+data.entries.append(entry)
+Write file
+```
+
+主线程**应记录**（`{REPORT_ROOT}/improvement-log/orchestrator.json`）示例：cwd 疑似非待分析项目、用户指令解析连续失败、add `not_found`、质审 `max_rounds_reached`、人工确认轮次达软上限等。
 
 ## 工作流（严格顺序执行）
 
-**每次委派 agent 时，必须把上文「全局约束」整段拷进 prompt（6 条 prompt 红线 + 统一排除 + 业务功能判定规则 + 冲突处理优先级）。这是硬性要求。**
+**每次委派 agent 时，必须把上文「全局约束」整段拷进 prompt（6 条 prompt 红线 + 统一排除 + 业务功能判定规则 + 冲突处理优先级），并附带一行 `REPORT_ROOT: <绝对路径>`。这是硬性要求。**
+
+### 阶段 0：锁定产物根目录（**必须最先执行**）
+
+在委派任何 sub-agent **之前**，主线程完成：
+
+```text
+1. 执行 pwd（或等价）得到 ANALYZE_CWD（被分析项目根目录的绝对路径）
+   - 若 cwd 像是插件仓库 analyze-code（含 .claude-plugin/ 且无待分析项目特征），
+     提示用户先 cd 到待分析项目再运行本 skill，不要继续写产物
+2. REPORT_ROOT ← ANALYZE_CWD + "/analysis-report"
+3. mkdir -p REPORT_ROOT/{features,boundary-review,quality-review,quality-review/features,improvement-log,improvement-log/features}
+4. 向用户确认一行：「分析报告将写入：<REPORT_ROOT>」
+5. 后续所有 write_json / 委派 agent 均使用 REPORT_ROOT 绝对路径，不再单独使用 ./analysis-report/
+```
+
+**自检**：阶段 1 写入前，主线程应能 `Read` 或列出 `REPORT_ROOT` 目录；若不存在则回到步骤 3。
 
 ### 阶段 1：勘察（project-scout）
 
@@ -93,12 +128,12 @@ description: 分析当前目录的开源项目，梳理面向用户的业务功�
 
 接收返回后：
 
-1. 由主线程把 Part 1（项目级概览）**原样写入** `./analysis-report/project-overview.json`（不交给 agent）。
+1. 由主线程把 Part 1（项目级概览）**原样写入** `{REPORT_ROOT}/project-overview.json`（不交给 agent）。
 2. 把 Part 2（候选清单）作为下一阶段（`feature-boundary-reviewer`）的输入。
 
 #### 阶段 1b：project-overview 质审（report-quality-challenger）
 
-主线程在写入 `./analysis-report/project-overview.json` 后执行：
+主线程在写入 `{REPORT_ROOT}/project-overview.json` 后执行：
 
 ```text
 target ← "project-overview"
@@ -295,7 +330,7 @@ write_json("./analysis-report/feature-plan.json", {
 
 | 场景 | 处理 |
 | --- | --- |
-| 用户 add 但 scout `not_found` | 跳过该 add，其它指令继续；写入 `scout_supplements`，不入 candidates |
+| 用户 add 但 scout `not_found` | 跳过该 add，其它指令继续；写入 `scout_supplements`，不入 candidates；`append_improvement_log(orchestrator, …)` |
 | 用户 add 但 scout `duplicate` | 提示与第 N 项实质相同；不入 candidates |
 | 用户引用编号越界 / 名字不唯一 / 动作不清晰 | 反问，不计入轮次 |
 | 用户复述确认时回 "修改这一条" / "重输" | 不计入轮次 |
@@ -304,7 +339,8 @@ write_json("./analysis-report/feature-plan.json", {
 | reviewer 对已 split 项建议再 split | reason 前缀「reviewer 二次建议」；不自动执行 |
 | 用户 `done` 时清单为空（keep == 0） | 拒绝 done，回到展示，提示 add 至少一项 |
 | 用户 `done` 时存在非 keep 项 | 这些项不进 feature-plan.json，但保留在 final.json.candidates；提示用户已忽略 N 项 |
-| 自然语言解析连续失败 ≥ 3 次 | 兜底贴回 §3.1 提示词与字面切分展示，让用户照示例重输 |
+| 自然语言解析连续失败 ≥ 3 次 | 兜底贴回 §3.1 提示词；`append_improvement_log(orchestrator, kind=difficulty, …)` |
+| 质审 round==5 仍有 blocking/major | 继续流水线；`append_improvement_log(orchestrator, kind=orchestration_note, …)` |
 
 #### 3.8 产物文件
 
@@ -327,6 +363,13 @@ write_json("./analysis-report/feature-plan.json", {
 ├── features/
 │   ├── <slug>.md                # 一级功能报告（文件名必须英文）
 │   └── <slug>.json
+├── improvement-log/             # v8：执行困难/可疑点（供改进 skill，质审不核实）
+│   ├── orchestrator.json
+│   ├── project-scout.json
+│   ├── boundary-reviewer.json
+│   ├── integration-analyst.json
+│   └── features/
+│       └── <slug>.json
 └── boundary-review/
     ├── round-1.json
     ├── round-2.json
@@ -437,7 +480,7 @@ while round ≤ 5:
 
 委派 `report-writer`：
 
-- 读取 `project-overview.json` / `feature-plan.json` / `features/*.json` / `integrations.json`；Glob + Read 存在的 `quality-review/**/*-final.json` 以在 overview §9 列出 unresolved（含 `quality-review/features/<slug>-final.json`）。
+- 读取 `{REPORT_ROOT}` 下中间产物；质审未闭合项按 `report-writer.md`「§9 质审未闭合项规则」处理（final 仅三种固定路径：`quality-review/project-overview-final.json`、`integrations-final.json`、`quality-review/features/<slug>-final.json`；**通过则无 final 文件，属正常**）。
 - **不得新增、删除、合并、拆分、重命名一级功能**：overview 的一级功能清单**严格来自** `feature-plan.json`，名称、顺序一致。
 - 缺失或质量不足的 feature → 标注「未能从中间产物确认」，禁止补造。
 - 输出 `./analysis-report/overview.md`，并在「一级功能」一节链接到 `features/<slug>.md`（展示文本用 `name`）。
@@ -447,6 +490,7 @@ while round ≤ 5:
 向用户简要汇报：
 
 - 一级功能总数（与 `feature-plan.json` 一致）
-- 写入产物路径（`./analysis-report/`）
+- 写入产物路径（`REPORT_ROOT` 绝对路径，默认 `<被分析项目>/analysis-report/`）
 - 冲突 / 未确认项总数
-- 质审未闭合项（来自 `quality-review/**/*-final.json`，若有）
+- 质审未闭合项（若有；全部通过则一句说明即可）
+- improvement-log 条目总数（供维护者改进 skill）

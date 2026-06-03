@@ -3,7 +3,7 @@
 - 日期：2026-06-02
 - 状态：修订 v7（在 v6 基础上补充：NarrativeBlock 叙事深度、`module_landscape` 双层模块、`report-quality-challenger` 三检查点质审 ≤5 轮/target；详见 [`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md)）
 - 来源需求：仓库根目录 `README.md`
-- 历史：v1 初轮确认；v2 增加功能边界校准、人工确认、prompt 红线、判定规则、中间产物、冲突处理；v3 补充工程化约束；v4 明确 integration-analyst 与 report-writer 的边界；v5 补齐 overview.md §1–§5 的数据源 `project-overview.json`；v6 人工确认多轮迭代（[`2026-06-02-iterative-confirmation-v6.md`](./2026-06-02-iterative-confirmation-v6.md)）；v7 报告深度与质审 agent（[`2026-06-02-report-depth-and-quality-agent-design.md`](./2026-06-02-report-depth-and-quality-agent-design.md)）
+- 历史：… v7 报告深度与质审 agent；**v8** 流程执行与改进记录 improvement-log（[`2026-06-02-improvement-log-design.md`](./2026-06-02-improvement-log-design.md)）
 
 ## 1. 目标
 
@@ -160,7 +160,7 @@ project-scout
 
 ## 6. 输出成果
 
-在**当前工作目录**下新建 `./analysis-report/` 并写入产物（默认即被分析项目根目录；报告正文为中文，**Markdown 文件名必须为英文**）：
+在**当前工作目录**下新建 `analysis-report/` 并写入产物（主线程阶段 0 用 `pwd` 得到 `REPORT_ROOT=<绝对路径>/analysis-report` 并写入；报告正文为中文，**Markdown 文件名必须为英文**）：
 
 ```text
 ./analysis-report/
@@ -400,6 +400,8 @@ v7 使用 **NarrativeBlock**（见 [`2026-06-02-report-depth-and-quality-agent-d
 - **R10（质审不改清单）**：`report-quality-challenger` 不得改 `feature-plan.json`。
 - **R11（质审轮次）**：每 target ≤5 轮；超限写 `max_rounds_reached` 后继续流水线。
 - **R12（英文报告文件名）**：`overview.md` 与 `features/<slug>.md` 必须为英文路径；`slug` 见 `feature-plan.json`，禁止用中文 `name` 作文件名。
+- **R13（产物根目录）**：阶段 0 主线程 `pwd` 锁定 `REPORT_ROOT=<cwd>/analysis-report`；所有 Write 与中间产物必须在 `REPORT_ROOT/` 下；委派 sub-agent 时 prompt **必须**传 `REPORT_ROOT` 绝对路径（禁止仅传 `./analysis-report/`，因子 agent cwd 可能不同）。
+- **R14（改进记录免质审）**：`improvement-log/` 与报告附录「流程执行与改进记录」供迭代 skill，质审**不核实**（见 improvement-log 设计 doc）。
 
 ### 7.3 业务功能判定规则 [新增]
 

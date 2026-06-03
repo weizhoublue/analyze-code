@@ -75,18 +75,19 @@ plugin 最终输出多份报告：
 
 执行流程：
 
+0. 主线程 **阶段 0**：`pwd` → `REPORT_ROOT=<cwd>/analysis-report`（绝对路径），`mkdir`，并向用户确认写入位置。
 1. `project-scout` 完成索引与候选清单；主线程写入 `project-overview.json`（v7：NarrativeBlock + `module_landscape`）。
 2. `report-quality-challenger` 质审 project-overview（≤5 轮，不通过则回灌 scout 修订 Part 1）。
 3. `feature-boundary-reviewer` 给出 keep/exclude/merge/split 建议。
 4. **多轮人工确认**（软上限 3 轮）：剔除/合并/拆分/重命名/新增；写入 `boundary-review/round-<N>.json`，完成后 `final.json` + `feature-plan.json`。
 5. 每个 `feature-digger` 深挖一级功能 → `report-quality-challenger` 质审该 feature（≤5 轮）。
 6. `integration-analyst` 集成三分类 → 质审 `integrations.json`。
-7. `report-writer` 汇总 `overview.md`（§6 模块关系；§9 可含质审 unresolved）。
+7. `report-writer` 汇总 `overview.md`（§6 模块关系；§9 可含质审 unresolved；**附录**合并 `improvement-log/` 供后续改进 skill）。
 
-产物路径（在**当前工作目录**下新建，默认即被分析项目根目录）：
+产物路径（**必须先 cd 到待分析项目**；阶段 0 锁定 `<项目绝对路径>/analysis-report/`）：
 
 ```text
-./analysis-report/
+<被分析项目>/analysis-report/
 ├── overview.md              # 总体报告（英文文件名）
 ├── project-overview.json    # 项目级概览（NarrativeBlock + module_landscape）
 ├── quality-review/          # v7：质审 round / final 审计
@@ -97,6 +98,7 @@ plugin 最终输出多份报告：
 │   └── final.json            # 最终态：candidates + reviews + user_decision_summary
 ├── feature-plan.json        # 执行：digger 唯一输入
 ├── integrations.json        # 集成能力三分类
+├── improvement-log/         # v8：执行困难/可疑点（质审不核实）
 └── features/
     ├── <slug>.md            # 一级功能报告（文件名英文 kebab-case；正文标题为中文 name）
     └── <slug>.json

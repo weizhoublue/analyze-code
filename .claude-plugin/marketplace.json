@@ -8,7 +8,7 @@
     {
       "name": "code-analyzer",
       "source": "./",
-      "description": "分析开源项目代码，梳理面向用户的业务功能并产出综合分析报告（一个 Skill + 六个 sub-agent 协作，含 report-quality-challenger 质审）",
+      "description": "分析开源项目代码，梳理面向用户的业务功能并产出综合分析报告（六个 sub-agent + 质审 + improvement-log 执行改进记录）",
       "category": "code-analysis",
       "keywords": ["code-analysis", "feature-discovery", "documentation"]
     }

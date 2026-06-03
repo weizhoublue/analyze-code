@@ -54,7 +54,7 @@ claude plugin install code-analyzer@analyze-code
 钉到特定分支/标签：
 
 ```bash
-claude plugin marketplace add weizhoublue/analyze-code@v0.2.0
+claude plugin marketplace add weizhoublue/analyze-code@v0.3.0
 ```
 
 非 GitHub 主机（GitLab / Bitbucket / 自建服务器）用完整 URL，`#ref` 钉分支或标签：
@@ -124,11 +124,13 @@ claude --plugin-dir /absolute/path/to/analyze-code
 
 ## 安装后的使用
 
-无论用哪种方式安装，最终命令一致。进入**待分析项目**目录后启动 `claude`，执行：
+无论用哪种方式安装，最终命令一致。**必须先 `cd` 到待分析项目根目录**再启动 `claude`，执行：
 
 ```text
 /code-analyzer:analyze-codebase
 ```
+
+**产物位置**：skill 阶段 0 会在**当前工作目录**下创建 `analysis-report/`（绝对路径会在对话里打印一行确认）。若你在插件源码仓库 `analyze-code` 里运行 skill 而未 cd 到目标项目，报告会误写到插件目录——这不是 bug，而是 cwd 不对。
 
 完整执行流程与产出目录见仓库根 [`README.md`](../README.md#使用方式plugin-安装后) 的「使用方式」一节，详细设计见 [`docs/superpowers/specs/2026-06-02-code-analyzer-plugin-design.md`](./superpowers/specs/2026-06-02-code-analyzer-plugin-design.md)。
 
@@ -208,7 +210,7 @@ claude plugin validate .
 
 本仓库当前的版本来源（Claude Code 解析顺序）：
 
-1. `plugin.json` 的 `version` 字段（当前是 `0.2.0`） →
+1. `plugin.json` 的 `version` 字段（当前是 `0.3.0`） →
 2. marketplace 条目里的 `version`（未设） →
 3. 否则使用 git commit SHA。
 

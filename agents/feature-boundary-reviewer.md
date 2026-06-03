@@ -90,6 +90,12 @@ tools: Read, Grep, Glob
 
 如果主线程未传 `prev_reviews`（例如初审），就走纯独立判定路径（仅依据 candidates 与证据样本，不参考上轮 reason）。
 
+## 改进记录（improvement-log）
+
+**本 agent 的 log 文件**：`{REPORT_ROOT}/improvement-log/boundary-reviewer.json`（`source`: `feature-boundary-reviewer`）。
+
+对 `merge`/`split` 边界难判、证据样本不足仍被迫 `keep`/`exclude`、与用户 `origin` 无关的判定犹豫等，**追加** `suspicion` 或 `difficulty` 条目（可选 `skill_hint`）。无则不要写文件。
+
 ## 返回格式
 
 向主线程返回一段 markdown，包含：

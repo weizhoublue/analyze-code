@@ -297,7 +297,7 @@ if round > 5 and 仍有 blocking issues:
 
 - 读取 `project-overview.json` 时渲染 NarrativeBlock 为 markdown 小节（非 bullet 一句话）。
 - 插入 overview §6 自 `module_landscape`。
-- 读取 `quality-review/**/*-final.json`（若存在）在 §9 综合说明中列出 `unresolved_issues`。
+- 读取质审 final（**仅** `project-overview-final.json`、`integrations-final.json`、`features/<slug>-final.json`；**仅** `max_rounds_reached` 时存在）。全部通过时无 final 文件属正常；overview §9 **禁止**写 glob/路径等技术说明。
 - **仍禁止**补造 confirmed 内容；缺字段仍写「未能从中间产物确认」。
 
 ### 7.5 `skills/analyze-codebase/SKILL.md` 编排
